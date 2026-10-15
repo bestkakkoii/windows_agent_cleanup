@@ -12,9 +12,14 @@ trim_trailing_whitespace = true
 charset = utf-8
 indent_size = 2
 
+# CMD launchers stay ASCII-only, a UTF-8 subset without BOM.
 [*.bat]
-charset = latin1
+charset = utf-8
 end_of_line = crlf
 
 [.{gitignore,gitattributes,editorconfig}]
+charset = utf-8
+
+# Agent Skills require frontmatter at the first byte.
+[SKILL.md]
 charset = utf-8
