@@ -1,0 +1,7 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Windows Agent Cleanup icon">
+  <rect x="0" y="0" width="128" height="128" rx="28" fill="#0f172a"/>
+  <rect x="24" y="26" width="24" height="24" rx="5" fill="#34d399"/>
+  <rect x="58" y="26" width="24" height="24" rx="5" fill="#22d3ee"/>
+  <rect x="24" y="60" width="24" height="24" rx="5" fill="#22d3ee"/>
+  <polygon points="58,64 80,64 80,52 110,78 80,104 80,90 58,90" fill="#f8fafc"/>
+</svg>

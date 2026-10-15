@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security reporting
+    url: https://github.com/bestkakkoii/windows_agent_cleanup/blob/main/SECURITY.md
+    about: Follow the private reporting instructions for security issues.

@@ -1,0 +1,1495 @@
+{
+  "schema": "secure_erase.requirements.v2",
+  "specification_status": "approved_57_base_decisions_with_2026_10_15_owner_amendments",
+  "expected_count": 57,
+  "verbatim_transcript_complete": false,
+  "direct_final_approval": true,
+  "windows_build_and_hardware_test_owner": "user",
+  "missing": [],
+  "truncated": [],
+  "requirements": [
+    {
+      "id": "R01",
+      "number": 1,
+      "round": 2,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "NTFS, ReFS, FAT32 and exFAT are within scope; capability uncertainty is explicitly downgraded or rejected.",
+      "implementation_status": "source_under_rework_pending_current_acceptance",
+      "validation_status": "requires_current_run_evidence; test paths are not pass claims",
+      "implementation": [
+        "src/windows/windows_backend.cpp",
+        "src/modules/model.ixx",
+        "src/modules/platform.ixx",
+        "src/modules/plan.ixx",
+        "src/modules/engine.ixx",
+        "src/core/engine.cpp",
+        "src/core/plan.cpp",
+        "src/core/engine_admission.cpp",
+        "src/core/engine_execution.cpp"
+      ],
+      "test_evidence": [
+        "tests/windows_backend_tests.cpp",
+        "tests/engine_tests.cpp",
+        "tests/portable_integration_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Capability coverage is not equivalent physical overwrite: ReFS and special formats require explicit delete-only approval; unknown storage is rejected."
+    },
+    {
+      "id": "R02",
+      "number": 2,
+      "round": 2,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Do not follow symbolic links or junctions; never overwrite shared hard-link data.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/windows/windows_backend.cpp",
+        "src/modules/model.ixx",
+        "src/modules/platform.ixx",
+        "src/modules/plan.ixx",
+        "src/modules/engine.ixx",
+        "src/core/engine.cpp",
+        "src/core/plan.cpp",
+        "src/core/engine_admission.cpp",
+        "src/core/engine_execution.cpp"
+      ],
+      "test_evidence": [
+        "tests/windows_backend_tests.cpp",
+        "tests/engine_tests.cpp",
+        "tests/portable_integration_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Reparse ancestors and final components are rejected; shared hard-link data is never overwritten."
+    },
+    {
+      "id": "R03",
+      "number": 3,
+      "round": 2,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Protect Windows, boot, recovery, system-service resources and important filesystem metadata.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/windows/windows_backend.cpp",
+        "src/modules/model.ixx",
+        "src/modules/platform.ixx",
+        "src/modules/plan.ixx",
+        "src/modules/engine.ixx",
+        "src/core/engine.cpp",
+        "src/core/plan.cpp",
+        "src/core/engine_admission.cpp",
+        "src/core/engine_execution.cpp"
+      ],
+      "test_evidence": [
+        "tests/windows_backend_tests.cpp",
+        "tests/engine_tests.cpp",
+        "tests/portable_integration_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims"
+    },
+    {
+      "id": "R04",
+      "number": 4,
+      "round": 2,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Attempt graceful lock release first; each forced process termination requires separate confirmation.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/windows/backend_locks.cpp",
+        "src/app/application.cpp",
+        "src/gui/main.cpp",
+        "src/cli/main.cpp",
+        "src/app/cli_arguments.cpp"
+      ],
+      "test_evidence": [
+        "tests/windows_backend_tests.cpp",
+        "docs/windows_test_plan.md"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims"
+    },
+    {
+      "id": "R05",
+      "number": 5,
+      "round": 2,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Select the best-effort strategy from actual storage-media and filesystem capabilities.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/windows/windows_backend.cpp",
+        "src/modules/model.ixx",
+        "src/modules/platform.ixx",
+        "src/modules/plan.ixx",
+        "src/modules/engine.ixx",
+        "src/core/engine.cpp",
+        "src/core/plan.cpp",
+        "src/core/engine_admission.cpp",
+        "src/core/engine_execution.cpp"
+      ],
+      "test_evidence": [
+        "tests/windows_backend_tests.cpp",
+        "tests/engine_tests.cpp",
+        "tests/portable_integration_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims"
+    },
+    {
+      "id": "R06",
+      "number": 6,
+      "round": 3,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Process every accessible alternate data stream; report stream enumeration/access failures explicitly.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/windows/windows_backend.cpp",
+        "src/modules/model.ixx",
+        "src/modules/platform.ixx",
+        "src/modules/plan.ixx",
+        "src/modules/engine.ixx",
+        "src/core/engine.cpp",
+        "src/core/plan.cpp",
+        "src/core/engine_admission.cpp",
+        "src/core/engine_execution.cpp"
+      ],
+      "test_evidence": [
+        "tests/windows_backend_tests.cpp",
+        "tests/engine_tests.cpp",
+        "tests/portable_integration_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims"
+    },
+    {
+      "id": "R07",
+      "number": 7,
+      "round": 3,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Default to one pass of cryptographically secure pseudorandom overwrite data.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/core/crypto.cpp",
+        "src/modules/crypto.ixx",
+        "src/modules/model.ixx",
+        "src/modules/platform.ixx",
+        "src/modules/plan.ixx",
+        "src/modules/engine.ixx",
+        "src/core/engine.cpp",
+        "src/core/plan.cpp",
+        "src/core/engine_admission.cpp",
+        "src/core/engine_execution.cpp",
+        "src/windows/state_store.cpp",
+        "src/modules/state_store.ixx",
+        "src/modules/configuration.ixx",
+        "src/core/codec.cpp"
+      ],
+      "test_evidence": [
+        "tests/crypto_tests.cpp",
+        "tests/engine_tests.cpp",
+        "tests/codec_tests.cpp",
+        "tests/state_store_windows_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims"
+    },
+    {
+      "id": "R08",
+      "number": 8,
+      "round": 3,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Flush then read back all overwritten bytes and compare against the exact expected stream.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/modules/model.ixx",
+        "src/modules/platform.ixx",
+        "src/modules/plan.ixx",
+        "src/modules/engine.ixx",
+        "src/core/engine.cpp",
+        "src/core/plan.cpp",
+        "src/core/engine_admission.cpp",
+        "src/core/engine_execution.cpp",
+        "src/windows/windows_backend.cpp",
+        "src/app/application.cpp",
+        "src/gui/main.cpp",
+        "src/cli/main.cpp",
+        "src/app/cli_arguments.cpp"
+      ],
+      "test_evidence": [
+        "tests/engine_tests.cpp",
+        "tests/portable_integration_tests.cpp",
+        "tests/cli_arguments_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims"
+    },
+    {
+      "id": "R09",
+      "number": 9,
+      "round": 3,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Use the native Windows TRIM path when applicable; never equate acceptance with physical sanitization.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/windows/windows_backend.cpp",
+        "src/modules/model.ixx",
+        "src/modules/platform.ixx",
+        "src/modules/plan.ixx",
+        "src/modules/engine.ixx",
+        "src/core/engine.cpp",
+        "src/core/plan.cpp",
+        "src/core/engine_admission.cpp",
+        "src/core/engine_execution.cpp"
+      ],
+      "test_evidence": [
+        "tests/windows_backend_tests.cpp",
+        "tests/engine_tests.cpp",
+        "tests/portable_integration_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims"
+    },
+    {
+      "id": "R10",
+      "number": 10,
+      "round": 3,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Stop the affected operation on failure and retain truthful partial state.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/modules/model.ixx",
+        "src/modules/platform.ixx",
+        "src/modules/plan.ixx",
+        "src/modules/engine.ixx",
+        "src/core/engine.cpp",
+        "src/core/plan.cpp",
+        "src/core/engine_admission.cpp",
+        "src/core/engine_execution.cpp",
+        "src/windows/windows_backend.cpp",
+        "src/app/application.cpp",
+        "src/gui/main.cpp",
+        "src/cli/main.cpp",
+        "src/app/cli_arguments.cpp"
+      ],
+      "test_evidence": [
+        "tests/engine_tests.cpp",
+        "tests/portable_integration_tests.cpp",
+        "tests/cli_arguments_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims"
+    },
+    {
+      "id": "R11",
+      "number": 11,
+      "round": 3,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Process a batch per file, skip failed items, and remove directories only when empty.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/modules/model.ixx",
+        "src/modules/platform.ixx",
+        "src/modules/plan.ixx",
+        "src/modules/engine.ixx",
+        "src/core/engine.cpp",
+        "src/core/plan.cpp",
+        "src/core/engine_admission.cpp",
+        "src/core/engine_execution.cpp",
+        "src/windows/windows_backend.cpp",
+        "src/app/application.cpp",
+        "src/gui/main.cpp",
+        "src/cli/main.cpp",
+        "src/app/cli_arguments.cpp"
+      ],
+      "test_evidence": [
+        "tests/engine_tests.cpp",
+        "tests/portable_integration_tests.cpp",
+        "tests/cli_arguments_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims"
+    },
+    {
+      "id": "R12",
+      "number": 12,
+      "round": 4,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Maximize speed only within unchanged safety and complete-verification guarantees.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/modules/model.ixx",
+        "src/modules/platform.ixx",
+        "src/modules/plan.ixx",
+        "src/modules/engine.ixx",
+        "src/core/engine.cpp",
+        "src/core/plan.cpp",
+        "src/core/engine_admission.cpp",
+        "src/core/engine_execution.cpp",
+        "src/windows/windows_backend.cpp",
+        "src/app/application.cpp",
+        "src/gui/main.cpp",
+        "src/cli/main.cpp",
+        "src/app/cli_arguments.cpp"
+      ],
+      "test_evidence": [
+        "tests/engine_tests.cpp",
+        "tests/portable_integration_tests.cpp",
+        "tests/cli_arguments_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims"
+    },
+    {
+      "id": "R13",
+      "number": 13,
+      "round": 4,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Assess synchronous/overlapped I/O, caching and alignment according to the device.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/windows/windows_backend.cpp",
+        "src/modules/model.ixx",
+        "src/modules/platform.ixx",
+        "src/modules/plan.ixx",
+        "src/modules/engine.ixx",
+        "src/core/engine.cpp",
+        "src/core/plan.cpp",
+        "src/core/engine_admission.cpp",
+        "src/core/engine_execution.cpp"
+      ],
+      "test_evidence": [
+        "tests/windows_backend_tests.cpp",
+        "tests/engine_tests.cpp",
+        "tests/portable_integration_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Buffered write-through I/O, positioned overlapped SSD operations and synchronous HDD/USB operations; no unaligned FILE_FLAG_NO_BUFFERING path is claimed."
+    },
+    {
+      "id": "R14",
+      "number": 14,
+      "round": 4,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Group work by physical storage device and dynamically bound each device's concurrency.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/modules/model.ixx",
+        "src/modules/platform.ixx",
+        "src/modules/plan.ixx",
+        "src/modules/engine.ixx",
+        "src/core/engine.cpp",
+        "src/core/plan.cpp",
+        "src/core/engine_admission.cpp",
+        "src/core/engine_execution.cpp",
+        "src/windows/windows_backend.cpp",
+        "src/app/application.cpp",
+        "src/gui/main.cpp",
+        "src/cli/main.cpp",
+        "src/app/cli_arguments.cpp"
+      ],
+      "test_evidence": [
+        "tests/engine_tests.cpp",
+        "tests/portable_integration_tests.cpp",
+        "tests/cli_arguments_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims"
+    },
+    {
+      "id": "R15",
+      "number": 15,
+      "round": 4,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Use bounded buffers and allow a configurable global memory ceiling.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/modules/model.ixx",
+        "src/modules/platform.ixx",
+        "src/modules/plan.ixx",
+        "src/modules/engine.ixx",
+        "src/core/engine.cpp",
+        "src/core/plan.cpp",
+        "src/core/engine_admission.cpp",
+        "src/core/engine_execution.cpp",
+        "src/windows/windows_backend.cpp",
+        "src/app/application.cpp",
+        "src/gui/main.cpp",
+        "src/cli/main.cpp",
+        "src/app/cli_arguments.cpp"
+      ],
+      "test_evidence": [
+        "tests/engine_tests.cpp",
+        "tests/portable_integration_tests.cpp",
+        "tests/cli_arguments_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Budget constrains engine working memory and buffers; allocator, GUI, OS cache and driver memory are not a process RSS hard limit. Metadata also has explicit count/text bounds."
+    },
+    {
+      "id": "R16",
+      "number": 16,
+      "round": 4,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Choose overwrite block size from device characteristics, alignment and measurements.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/modules/model.ixx",
+        "src/modules/platform.ixx",
+        "src/modules/plan.ixx",
+        "src/modules/engine.ixx",
+        "src/core/engine.cpp",
+        "src/core/plan.cpp",
+        "src/core/engine_admission.cpp",
+        "src/core/engine_execution.cpp",
+        "src/windows/windows_backend.cpp",
+        "src/app/application.cpp",
+        "src/gui/main.cpp",
+        "src/cli/main.cpp",
+        "src/app/cli_arguments.cpp"
+      ],
+      "test_evidence": [
+        "tests/engine_tests.cpp",
+        "tests/portable_integration_tests.cpp",
+        "tests/cli_arguments_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Transfer latency drives bounded chunk adaptation; hardware throughput tuning remains unmeasured."
+    },
+    {
+      "id": "R17",
+      "number": 17,
+      "round": 4,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Support pause, cancel and durable checkpoints; revalidate target identity before resume.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/modules/model.ixx",
+        "src/modules/platform.ixx",
+        "src/modules/plan.ixx",
+        "src/modules/engine.ixx",
+        "src/core/engine.cpp",
+        "src/core/plan.cpp",
+        "src/core/engine_admission.cpp",
+        "src/core/engine_execution.cpp",
+        "src/windows/state_store.cpp",
+        "src/modules/state_store.ixx",
+        "src/modules/configuration.ixx",
+        "src/core/codec.cpp",
+        "src/app/application.cpp",
+        "src/gui/main.cpp",
+        "src/cli/main.cpp",
+        "src/app/cli_arguments.cpp"
+      ],
+      "test_evidence": [
+        "tests/engine_tests.cpp",
+        "tests/portable_integration_tests.cpp",
+        "tests/state_store_windows_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims"
+    },
+    {
+      "id": "R18",
+      "number": 18,
+      "round": 4,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Dynamically limit CPU, I/O and queued work according to system load.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/modules/model.ixx",
+        "src/modules/platform.ixx",
+        "src/modules/plan.ixx",
+        "src/modules/engine.ixx",
+        "src/core/engine.cpp",
+        "src/core/plan.cpp",
+        "src/core/engine_admission.cpp",
+        "src/core/engine_execution.cpp",
+        "src/windows/windows_backend.cpp",
+        "src/app/application.cpp",
+        "src/gui/main.cpp",
+        "src/cli/main.cpp",
+        "src/app/cli_arguments.cpp"
+      ],
+      "test_evidence": [
+        "tests/engine_tests.cpp",
+        "tests/portable_integration_tests.cpp",
+        "tests/cli_arguments_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "CPU/RAM pressure, per-device queues and shared bandwidth limiter; system-global scheduling control is not claimed."
+    },
+    {
+      "id": "R19",
+      "number": 19,
+      "round": 5,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Use Dear ImGui, Win32 and DirectX 11 in a single native GUI window.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/app/application.cpp",
+        "src/gui/main.cpp",
+        "src/cli/main.cpp",
+        "src/app/cli_arguments.cpp",
+        "src/modules/engine.ixx"
+      ],
+      "test_evidence": [
+        "tests/cli_arguments_tests.cpp",
+        "docs/windows_test_plan.md"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims"
+    },
+    {
+      "id": "R20",
+      "number": 20,
+      "round": 5,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Ship distinct GUI and CLI executables backed by the same core library.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/app/application.cpp",
+        "src/gui/main.cpp",
+        "src/cli/main.cpp",
+        "src/app/cli_arguments.cpp",
+        "src/modules/engine.ixx"
+      ],
+      "test_evidence": [
+        "tests/cli_arguments_tests.cpp",
+        "docs/windows_test_plan.md"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims"
+    },
+    {
+      "id": "R21",
+      "number": 21,
+      "round": 5,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Preview every frozen target, size and risk before confirming the whole batch.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/app/application.cpp",
+        "src/gui/main.cpp",
+        "src/cli/main.cpp",
+        "src/app/cli_arguments.cpp",
+        "src/modules/engine.ixx"
+      ],
+      "test_evidence": [
+        "tests/cli_arguments_tests.cpp",
+        "docs/windows_test_plan.md"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims"
+    },
+    {
+      "id": "R22",
+      "number": 22,
+      "round": 5,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "CLI defaults to preview and requires an explicit irreversible-operation confirmation argument.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/app/application.cpp",
+        "src/gui/main.cpp",
+        "src/cli/main.cpp",
+        "src/app/cli_arguments.cpp",
+        "src/modules/engine.ixx"
+      ],
+      "test_evidence": [
+        "tests/cli_arguments_tests.cpp",
+        "docs/windows_test_plan.md"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims"
+    },
+    {
+      "id": "R23",
+      "number": 23,
+      "round": 5,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "GUI supports drag/drop, file/directory pickers, queue, pause, cancel, resume and history.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/app/application.cpp",
+        "src/gui/main.cpp",
+        "src/cli/main.cpp",
+        "src/app/cli_arguments.cpp",
+        "src/modules/engine.ixx"
+      ],
+      "test_evidence": [
+        "tests/cli_arguments_tests.cpp",
+        "docs/windows_test_plan.md"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims"
+    },
+    {
+      "id": "R24",
+      "number": 24,
+      "round": 5,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Show file/batch progress, throughput, ETA, failure counts and device statistics.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/app/application.cpp",
+        "src/gui/main.cpp",
+        "src/cli/main.cpp",
+        "src/app/cli_arguments.cpp",
+        "src/modules/engine.ixx"
+      ],
+      "test_evidence": [
+        "tests/cli_arguments_tests.cpp",
+        "docs/windows_test_plan.md"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims"
+    },
+    {
+      "id": "R25",
+      "number": 25,
+      "round": 5,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Emit JSONL with stable event codes, Win32/NTSTATUS context and path masking.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/windows/state_store.cpp",
+        "src/modules/state_store.ixx",
+        "src/modules/configuration.ixx",
+        "src/core/codec.cpp",
+        "src/app/application.cpp",
+        "src/gui/main.cpp",
+        "src/cli/main.cpp",
+        "src/app/cli_arguments.cpp"
+      ],
+      "test_evidence": [
+        "tests/codec_tests.cpp",
+        "tests/state_store_windows_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Win32 APIs report native Win32 codes; VSS reports HRESULT. No NTSTATUS is fabricated for APIs that do not expose it."
+    },
+    {
+      "id": "R26",
+      "number": 26,
+      "round": 6,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Use a currently supported MSVC toolchain discovered in VS2022 or VS2026 installations.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "CMakeLists.txt",
+        "scripts/build_windows.ps1",
+        "build_release.bat",
+        "src/modules/engine.ixx",
+        "src/modules/application.ixx"
+      ],
+      "test_evidence": [
+        "scripts/validate.py",
+        "docs/windows_test_plan.md"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims"
+    },
+    {
+      "id": "R27",
+      "number": 27,
+      "round": 6,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Prefer Ninja/CMake and verified C++ named modules.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "CMakeLists.txt",
+        "scripts/build_windows.ps1",
+        "build_release.bat",
+        "src/modules/engine.ixx",
+        "src/modules/application.ixx",
+        "src/modules/model.ixx",
+        "src/modules/platform.ixx",
+        "src/modules/plan.ixx",
+        "src/core/engine_admission.cpp",
+        "src/core/engine_execution.cpp",
+        "scripts/verify_modules.py",
+        "docs/design.md"
+      ],
+      "test_evidence": [
+        "scripts/validate.py",
+        "docs/windows_test_plan.md",
+        "tests/module_interface_tests.cpp",
+        "scripts/verify_modules.py"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "RC2 owns all public declarations in13 genuine named modules; two private engine partitions encapsulate admission/execution. Every authored C++ unit imports the actual vendor std module. CMake FILE_SET scanning builds real BMIs; no textual owned API or fake std fallback. Portable Clang21 C++26 module evidence is separate from pending native MSVC evidence."
+    },
+    {
+      "id": "R28",
+      "number": 28,
+      "round": 6,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Use /std:c++latest; rely only on compiler/library facilities demonstrated to work.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "CMakeLists.txt",
+        "scripts/build_windows.ps1",
+        "build_release.bat",
+        "src/modules/engine.ixx",
+        "src/modules/application.ixx"
+      ],
+      "test_evidence": [
+        "scripts/validate.py",
+        "docs/windows_test_plan.md"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "MSVC uses actual /std:c++latest. CMake4.4.4 identifies this installed MSVC standard-library mode with standard metadata23; it does not provide an MSVC standard26 mapping. Portable verification uses genuine Clang21 -std=c++26 and libc++ std.cppm. No compiler feature claim follows from a version label alone."
+    },
+    {
+      "id": "R29",
+      "number": 29,
+      "round": 6,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Release only with /O2 /GL /LTCG /MT; enable PGO only after supported testing.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "CMakeLists.txt",
+        "scripts/build_windows.ps1",
+        "build_release.bat",
+        "src/modules/engine.ixx",
+        "src/modules/application.ixx"
+      ],
+      "test_evidence": [
+        "scripts/validate.py",
+        "docs/windows_test_plan.md"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "PGO remains off until a measured training/validation run exists."
+    },
+    {
+      "id": "R30",
+      "number": 30,
+      "round": 6,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Maintain x64 baseline compatibility and dispatch CPU-specific operations at runtime.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "CMakeLists.txt",
+        "scripts/build_windows.ps1",
+        "build_release.bat",
+        "src/modules/engine.ixx",
+        "src/modules/application.ixx"
+      ],
+      "test_evidence": [
+        "scripts/validate.py",
+        "docs/windows_test_plan.md"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Portable scalar x64 baseline plus Windows CNG system entropy; no unsupported AVX baseline or untested custom SIMD dispatch."
+    },
+    {
+      "id": "R31",
+      "number": 31,
+      "round": 6,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "BAT/CMake automatically discover PATH tools first, then regular MSVC/SDK/tool installation paths.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "CMakeLists.txt",
+        "scripts/build_windows.ps1",
+        "build_release.bat",
+        "src/modules/engine.ixx",
+        "src/modules/application.ixx"
+      ],
+      "test_evidence": [
+        "scripts/validate.py",
+        "docs/windows_test_plan.md"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims"
+    },
+    {
+      "id": "R32",
+      "number": 32,
+      "round": 6,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Pin dependency versions and hashes and support cached/offline rebuilds.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "dependencies.lock.json",
+        "cmake/verify_dependencies.cmake",
+        "scripts/restore_dependencies.ps1"
+      ],
+      "test_evidence": [
+        "scripts/validate.py"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims"
+    },
+    {
+      "id": "R33",
+      "number": 33,
+      "round": 6,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Use UTF-8 BOM for authored source; honor standard-format UTF-8 exceptions; deliver Source ZIP.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "scripts/package.py",
+        "scripts/validate.py",
+        "docs/authority.md"
+      ],
+      "test_evidence": [
+        "scripts/validate.py"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims"
+    },
+    {
+      "id": "R34",
+      "number": 34,
+      "round": 7,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Validate Windows 10 1809 and representative Windows 10/11 builds; distinguish expected from tested support.",
+      "implementation_status": "gate_and_fixture_sources_provided_owner_execution_pending",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "docs/windows_test_plan.md",
+        "scripts/validate.py",
+        "scripts/package.py",
+        "validate_windows.bat",
+        "scripts/build_windows.ps1"
+      ],
+      "test_evidence": [
+        "tests/engine_tests.cpp",
+        "tests/portable_integration_tests.cpp",
+        "tests/windows_backend_tests.cpp",
+        "tests/state_store_windows_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "All requested Windows versions are expected targets until actual OS build evidence is supplied."
+    },
+    {
+      "id": "R35",
+      "number": 35,
+      "round": 7,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Maintain a filesystem and HDD/SSD/USB capability/test matrix; downgrade or reject unsupported cases.",
+      "implementation_status": "gate_and_fixture_sources_provided_owner_execution_pending",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/windows/windows_backend.cpp",
+        "src/modules/model.ixx",
+        "src/modules/platform.ixx",
+        "src/modules/plan.ixx",
+        "src/modules/engine.ixx",
+        "src/core/engine.cpp",
+        "src/core/plan.cpp",
+        "src/core/engine_admission.cpp",
+        "src/core/engine_execution.cpp"
+      ],
+      "test_evidence": [
+        "tests/windows_backend_tests.cpp",
+        "tests/engine_tests.cpp",
+        "tests/portable_integration_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Virtual, remote, unknown and multi-disk volume topologies currently fail closed. Physical HDD/SSD/USB tests remain required."
+    },
+    {
+      "id": "R36",
+      "number": 36,
+      "round": 7,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Grade outcomes by verifiable evidence, residual risks and incomplete operations.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/modules/model.ixx",
+        "src/modules/platform.ixx",
+        "src/modules/plan.ixx",
+        "src/modules/engine.ixx",
+        "src/core/engine.cpp",
+        "src/core/plan.cpp",
+        "src/core/engine_admission.cpp",
+        "src/core/engine_execution.cpp",
+        "src/windows/windows_backend.cpp",
+        "src/app/application.cpp",
+        "src/gui/main.cpp",
+        "src/cli/main.cpp",
+        "src/app/cli_arguments.cpp"
+      ],
+      "test_evidence": [
+        "tests/engine_tests.cpp",
+        "tests/portable_integration_tests.cpp",
+        "tests/cli_arguments_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims"
+    },
+    {
+      "id": "R37",
+      "number": 37,
+      "round": 7,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Run fault and destructive tests only on dedicated test data/VMs/disposable media.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "docs/windows_test_plan.md",
+        "scripts/validate.py",
+        "scripts/package.py",
+        "validate_windows.bat",
+        "scripts/build_windows.ps1"
+      ],
+      "test_evidence": [
+        "tests/engine_tests.cpp",
+        "tests/portable_integration_tests.cpp",
+        "tests/windows_backend_tests.cpp",
+        "tests/state_store_windows_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims"
+    },
+    {
+      "id": "R38",
+      "number": 38,
+      "round": 7,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "System-resource protection is fail-closed: uncertainty rejects the target.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/windows/windows_backend.cpp",
+        "src/modules/model.ixx",
+        "src/modules/platform.ixx",
+        "src/modules/plan.ixx",
+        "src/modules/engine.ixx",
+        "src/core/engine.cpp",
+        "src/core/plan.cpp",
+        "src/core/engine_admission.cpp",
+        "src/core/engine_execution.cpp"
+      ],
+      "test_evidence": [
+        "tests/windows_backend_tests.cpp",
+        "tests/engine_tests.cpp",
+        "tests/portable_integration_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims"
+    },
+    {
+      "id": "R39",
+      "number": 39,
+      "round": 7,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Release needs all required tests passing; incomplete platform compatibility validation permits only RC.",
+      "implementation_status": "gate_and_fixture_sources_provided_owner_execution_pending",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "docs/windows_test_plan.md",
+        "scripts/validate.py",
+        "scripts/package.py",
+        "validate_windows.bat",
+        "scripts/build_windows.ps1"
+      ],
+      "test_evidence": [
+        "tests/engine_tests.cpp",
+        "tests/portable_integration_tests.cpp",
+        "tests/windows_backend_tests.cpp",
+        "tests/state_store_windows_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "This candidate is source RC only, not a tested native binary or Release. Missing native evidence stays not_run."
+    },
+    {
+      "id": "R40",
+      "number": 40,
+      "round": 7,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Deliver source ZIP, build scripts, locked dependencies, tests and machine-readable acceptance evidence.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "docs/windows_test_plan.md",
+        "scripts/validate.py",
+        "scripts/package.py",
+        "validate_windows.bat",
+        "scripts/build_windows.ps1"
+      ],
+      "test_evidence": [
+        "tests/engine_tests.cpp",
+        "tests/portable_integration_tests.cpp",
+        "tests/windows_backend_tests.cpp",
+        "tests/state_store_windows_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims"
+    },
+    {
+      "id": "R41",
+      "number": 41,
+      "round": 8,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Revalidate handles, volume/file identity and attributes; reject inconsistent targets.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/windows/windows_backend.cpp",
+        "src/modules/model.ixx",
+        "src/modules/platform.ixx",
+        "src/modules/plan.ixx",
+        "src/modules/engine.ixx",
+        "src/core/engine.cpp",
+        "src/core/plan.cpp",
+        "src/core/engine_admission.cpp",
+        "src/core/engine_execution.cpp"
+      ],
+      "test_evidence": [
+        "tests/windows_backend_tests.cpp",
+        "tests/engine_tests.cpp",
+        "tests/portable_integration_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims"
+    },
+    {
+      "id": "R42",
+      "number": 42,
+      "round": 8,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Before resume, validate identity, size, streams, timestamps and checkpoint state.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/modules/model.ixx",
+        "src/modules/platform.ixx",
+        "src/modules/plan.ixx",
+        "src/modules/engine.ixx",
+        "src/core/engine.cpp",
+        "src/core/plan.cpp",
+        "src/core/engine_admission.cpp",
+        "src/core/engine_execution.cpp",
+        "src/windows/state_store.cpp",
+        "src/modules/state_store.ixx",
+        "src/modules/configuration.ixx",
+        "src/core/codec.cpp",
+        "src/app/application.cpp",
+        "src/gui/main.cpp",
+        "src/cli/main.cpp",
+        "src/app/cli_arguments.cpp"
+      ],
+      "test_evidence": [
+        "tests/engine_tests.cpp",
+        "tests/portable_integration_tests.cpp",
+        "tests/state_store_windows_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims"
+    },
+    {
+      "id": "R43",
+      "number": 43,
+      "round": 8,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Temporarily adjust attributes only on approved non-system targets and restore them where possible.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/windows/windows_backend.cpp",
+        "src/modules/model.ixx",
+        "src/modules/platform.ixx",
+        "src/modules/plan.ixx",
+        "src/modules/engine.ixx",
+        "src/core/engine.cpp",
+        "src/core/plan.cpp",
+        "src/core/engine_admission.cpp",
+        "src/core/engine_execution.cpp"
+      ],
+      "test_evidence": [
+        "tests/windows_backend_tests.cpp",
+        "tests/engine_tests.cpp",
+        "tests/portable_integration_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Readonly adjustment/restoration is handle-bound and checkpoint snapshots restore attributes before persistence; Windows runtime evidence pending."
+    },
+    {
+      "id": "R44",
+      "number": 44,
+      "round": 8,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Deduplicate by identity and do not overwrite hard-link shared data.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/windows/windows_backend.cpp",
+        "src/modules/model.ixx",
+        "src/modules/platform.ixx",
+        "src/modules/plan.ixx",
+        "src/modules/engine.ixx",
+        "src/core/engine.cpp",
+        "src/core/plan.cpp",
+        "src/core/engine_admission.cpp",
+        "src/core/engine_execution.cpp"
+      ],
+      "test_evidence": [
+        "tests/windows_backend_tests.cpp",
+        "tests/engine_tests.cpp",
+        "tests/portable_integration_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Multiple selected aliases collapse to one deterministic namespace. Remaining aliases survive, are reported, and can leave selected directories nonempty."
+    },
+    {
+      "id": "R45",
+      "number": 45,
+      "round": 8,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Analyze special-file capabilities, then choose overwrite, explicitly authorized downgrade deletion, or refusal with evidence.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/windows/windows_backend.cpp",
+        "src/modules/model.ixx",
+        "src/modules/platform.ixx",
+        "src/modules/plan.ixx",
+        "src/modules/engine.ixx",
+        "src/core/engine.cpp",
+        "src/core/plan.cpp",
+        "src/core/engine_admission.cpp",
+        "src/core/engine_execution.cpp"
+      ],
+      "test_evidence": [
+        "tests/windows_backend_tests.cpp",
+        "tests/engine_tests.cpp",
+        "tests/portable_integration_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims"
+    },
+    {
+      "id": "R46",
+      "number": 46,
+      "round": 8,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "On storage-device or filesystem fault, stop affected device work and retain isolated diagnostics.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/modules/model.ixx",
+        "src/modules/platform.ixx",
+        "src/modules/plan.ixx",
+        "src/modules/engine.ixx",
+        "src/core/engine.cpp",
+        "src/core/plan.cpp",
+        "src/core/engine_admission.cpp",
+        "src/core/engine_execution.cpp",
+        "src/windows/windows_backend.cpp",
+        "src/app/application.cpp",
+        "src/gui/main.cpp",
+        "src/cli/main.cpp",
+        "src/app/cli_arguments.cpp"
+      ],
+      "test_evidence": [
+        "tests/engine_tests.cpp",
+        "tests/portable_integration_tests.cpp",
+        "tests/cli_arguments_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims"
+    },
+    {
+      "id": "R47",
+      "number": 47,
+      "round": 9,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Overwrite/verify accessible resident data streams; report historical MFT/journal remnants as unguaranteed.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/windows/windows_backend.cpp",
+        "src/modules/model.ixx",
+        "src/modules/platform.ixx",
+        "src/modules/plan.ixx",
+        "src/modules/engine.ixx",
+        "src/core/engine.cpp",
+        "src/core/plan.cpp",
+        "src/core/engine_admission.cpp",
+        "src/core/engine_execution.cpp"
+      ],
+      "test_evidence": [
+        "tests/windows_backend_tests.cpp",
+        "tests/engine_tests.cpp",
+        "tests/portable_integration_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Logical accessible resident streams are covered; historical filesystem records and journal entries are not sanitized."
+    },
+    {
+      "id": "R48",
+      "number": 48,
+      "round": 9,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Use versioned built-in protection rules plus runtime identification; reject unknown protection status.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/windows/windows_backend.cpp",
+        "src/modules/model.ixx",
+        "src/modules/platform.ixx",
+        "src/modules/plan.ixx",
+        "src/modules/engine.ixx",
+        "src/core/engine.cpp",
+        "src/core/plan.cpp",
+        "src/core/engine_admission.cpp",
+        "src/core/engine_execution.cpp"
+      ],
+      "test_evidence": [
+        "tests/windows_backend_tests.cpp",
+        "tests/engine_tests.cpp",
+        "tests/portable_integration_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims"
+    },
+    {
+      "id": "R49",
+      "number": 49,
+      "round": 9,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Force-terminate only clearly identified, unprotected user processes, with confirmation for each process.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/windows/backend_locks.cpp",
+        "src/app/application.cpp",
+        "src/gui/main.cpp",
+        "src/cli/main.cpp",
+        "src/app/cli_arguments.cpp"
+      ],
+      "test_evidence": [
+        "tests/windows_backend_tests.cpp",
+        "docs/windows_test_plan.md"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims"
+    },
+    {
+      "id": "R50",
+      "number": 50,
+      "round": 9,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Checkpoint storage requires integrity, restricted access, atomic updates and version compatibility.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/windows/state_store.cpp",
+        "src/modules/state_store.ixx",
+        "src/modules/configuration.ixx",
+        "src/core/codec.cpp",
+        "src/app/application.cpp",
+        "src/gui/main.cpp",
+        "src/cli/main.cpp",
+        "src/app/cli_arguments.cpp"
+      ],
+      "test_evidence": [
+        "tests/codec_tests.cpp",
+        "tests/state_store_windows_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "DPAPI provides authenticated protection, not anti-rollback against the same principal/SYSTEM. Fresh consent, identity checks and content verification still apply."
+    },
+    {
+      "id": "R51",
+      "number": 51,
+      "round": 9,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Downgrade deletion needs extra confirmation, including a separate CLI authorization.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/modules/model.ixx",
+        "src/modules/platform.ixx",
+        "src/modules/plan.ixx",
+        "src/modules/engine.ixx",
+        "src/core/engine.cpp",
+        "src/core/plan.cpp",
+        "src/core/engine_admission.cpp",
+        "src/core/engine_execution.cpp",
+        "src/app/application.cpp",
+        "src/gui/main.cpp",
+        "src/cli/main.cpp",
+        "src/app/cli_arguments.cpp"
+      ],
+      "test_evidence": [
+        "tests/engine_tests.cpp",
+        "tests/cli_arguments_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims"
+    },
+    {
+      "id": "R52",
+      "number": 52,
+      "round": 9,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Do not modify snapshots or backups; detect identifiable retained-copy risks and report them.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/windows/retained_copies.cpp",
+        "src/modules/retained_copies.ixx",
+        "src/windows/windows_backend.cpp",
+        "src/app/application.cpp",
+        "src/gui/main.cpp",
+        "src/cli/main.cpp",
+        "src/app/cli_arguments.cpp"
+      ],
+      "test_evidence": [
+        "docs/windows_test_plan.md"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Read-only completed VSS snapshot inventory is explicit complete/count/error; provider failure is unknown, not zero. Arbitrary/offline/cloud backups cannot be inventoried completely."
+    },
+    {
+      "id": "R53",
+      "number": 53,
+      "round": 10,
+      "authority_status": "direct_user_text",
+      "approved_text": "Freeze the target set during preview; revalidate identity at execution; never process additions or replacements.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/modules/model.ixx",
+        "src/modules/platform.ixx",
+        "src/modules/plan.ixx",
+        "src/modules/engine.ixx",
+        "src/core/engine.cpp",
+        "src/core/plan.cpp",
+        "src/core/engine_admission.cpp",
+        "src/core/engine_execution.cpp",
+        "src/windows/windows_backend.cpp",
+        "src/app/application.cpp",
+        "src/gui/main.cpp",
+        "src/cli/main.cpp",
+        "src/app/cli_arguments.cpp"
+      ],
+      "test_evidence": [
+        "tests/engine_tests.cpp",
+        "tests/portable_integration_tests.cpp",
+        "tests/cli_arguments_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims"
+    },
+    {
+      "id": "R54",
+      "number": 54,
+      "round": 10,
+      "authority_status": "direct_user_text",
+      "approved_text": "List downgrade targets and obtain independent preview authorization; reconfirm changed execution capabilities.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/modules/model.ixx",
+        "src/modules/platform.ixx",
+        "src/modules/plan.ixx",
+        "src/modules/engine.ixx",
+        "src/core/engine.cpp",
+        "src/core/plan.cpp",
+        "src/core/engine_admission.cpp",
+        "src/core/engine_execution.cpp",
+        "src/windows/windows_backend.cpp",
+        "src/app/application.cpp",
+        "src/gui/main.cpp",
+        "src/cli/main.cpp",
+        "src/app/cli_arguments.cpp"
+      ],
+      "test_evidence": [
+        "tests/engine_tests.cpp",
+        "tests/portable_integration_tests.cpp",
+        "tests/cli_arguments_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Execution capability changes reject the old approval and require repreview/fresh explicit consent; no silent downgrade."
+    },
+    {
+      "id": "R55",
+      "number": 55,
+      "round": 10,
+      "authority_status": "direct_user_text",
+      "approved_text": "Use a bounded reproducible cryptographic data stream; protect sensitive state and verify its integrity.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/core/crypto.cpp",
+        "src/modules/crypto.ixx",
+        "src/modules/model.ixx",
+        "src/modules/platform.ixx",
+        "src/modules/plan.ixx",
+        "src/modules/engine.ixx",
+        "src/core/engine.cpp",
+        "src/core/plan.cpp",
+        "src/core/engine_admission.cpp",
+        "src/core/engine_execution.cpp",
+        "src/windows/state_store.cpp",
+        "src/modules/state_store.ixx",
+        "src/modules/configuration.ixx",
+        "src/core/codec.cpp"
+      ],
+      "test_evidence": [
+        "tests/crypto_tests.cpp",
+        "tests/engine_tests.cpp",
+        "tests/codec_tests.cpp",
+        "tests/state_store_windows_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims"
+    },
+    {
+      "id": "R56",
+      "number": 56,
+      "round": 10,
+      "authority_status": "direct_user_text",
+      "approved_text": "Restrict log/checkpoint access, allow configurable retention, remove completed checkpoints and rotate logs by policy.",
+      "implementation_status": "implemented_source_pending_windows_validation",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "src/windows/state_store.cpp",
+        "src/modules/state_store.ixx",
+        "src/modules/configuration.ixx",
+        "src/core/codec.cpp",
+        "src/app/application.cpp",
+        "src/gui/main.cpp",
+        "src/cli/main.cpp",
+        "src/app/cli_arguments.cpp"
+      ],
+      "test_evidence": [
+        "tests/codec_tests.cpp",
+        "tests/state_store_windows_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Default incomplete checkpoint retention is unlimited until completion/explicit expiry; logs default30days,4MiB x8. ACL is not a boundary against a compromised same user/SYSTEM."
+    },
+    {
+      "id": "R57",
+      "number": 57,
+      "round": 10,
+      "authority_status": "direct_user_text",
+      "approved_text": "All necessary unit/integration/isolated destructive tests must pass; without platform measurements deliver at most RC.",
+      "implementation_status": "gate_and_fixture_sources_provided_owner_execution_pending",
+      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation": [
+        "docs/windows_test_plan.md",
+        "scripts/validate.py",
+        "scripts/package.py",
+        "validate_windows.bat",
+        "scripts/build_windows.ps1"
+      ],
+      "test_evidence": [
+        "tests/engine_tests.cpp",
+        "tests/portable_integration_tests.cpp",
+        "tests/windows_backend_tests.cpp",
+        "tests/state_store_windows_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Unit/portable integration evidence is generated locally; mandatory native isolated and media matrix tests remain owner-run gates."
+    }
+  ],
+  "module_architecture_revision": "2.0.0-rc.1",
+  "additional_mode_amendment": "spec/quick_delete_amendment.json",
+  "cli_quick_amendment": "spec/cli_quick_amendment.json",
+  "current_amendment": "spec/project.json",
+  "current_validation_location": "CI artifacts and release evidence, never a tracked per-run report"
+}

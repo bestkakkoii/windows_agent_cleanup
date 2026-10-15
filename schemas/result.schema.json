@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "windows_agent_cleanup.result.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "request_id",
+    "job_id",
+    "plan_fingerprint",
+    "mode",
+    "status",
+    "counts",
+    "error_code",
+    "native_code",
+    "report_file",
+    "resumable",
+    "advisory"
+  ],
+  "properties": {
+    "schema": {
+      "const": "windows_agent_cleanup.result.v1"
+    },
+    "request_id": {
+      "type": "string"
+    },
+    "job_id": {
+      "type": "string"
+    },
+    "plan_fingerprint": {
+      "type": "string"
+    },
+    "mode": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "error_code": {
+      "type": "string"
+    },
+    "report_file": {
+      "type": "string"
+    },
+    "native_code": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "targets",
+        "completed",
+        "failed",
+        "pending"
+      ],
+      "properties": {
+        "targets": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "completed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pending": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "resumable": {
+      "type": "boolean"
+    },
+    "advisory": {
+      "type": "boolean"
+    }
+  }
+}

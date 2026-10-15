@@ -1,0 +1,75 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 4,
+    "minor": 5,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "windows-release",
+      "displayName": "Windows 11+ MSVC x64 latest, native modules and vendor import std",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/windows_release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CONFIGURATION_TYPES": "Release",
+        "CMAKE_CXX_COMPILER": "cl",
+        "SECURE_ERASE_PORTABLE_TEST_ONLY": "OFF",
+        "secure_erase_enable_destructive_tests": "OFF"
+      }
+    },
+    {
+      "name": "portable-release",
+      "displayName": "Real C++26 named modules and libc++ import std; portable tests only",
+      "binaryDir": "${sourceDir}/build/portable_release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "SECURE_ERASE_PORTABLE_TEST_ONLY": "ON",
+        "CMAKE_CXX_COMPILER": "clang++-21",
+        "CMAKE_CXX_FLAGS": "-stdlib=libc++"
+      },
+      "generator": "Ninja"
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "windows-release",
+      "configurePreset": "windows-release",
+      "configuration": "Release"
+    },
+    {
+      "name": "portable-release",
+      "configurePreset": "portable-release",
+      "configuration": "Release"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "windows-release",
+      "configurePreset": "windows-release",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "exclude": {
+          "label": "destructive"
+        }
+      }
+    },
+    {
+      "name": "portable-release",
+      "configurePreset": "portable-release",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "exclude": {
+          "label": "destructive"
+        }
+      }
+    }
+  ]
+}

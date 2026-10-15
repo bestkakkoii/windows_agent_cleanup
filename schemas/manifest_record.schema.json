@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "windows_agent_cleanup.manifest_record.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "path"
+  ],
+  "properties": {
+    "path": {
+      "type": "string",
+      "description": "Absolute drive-local Windows namespace; no wildcard, ADS, dot components, NUL, or reparse traversal. Directory targets recursively freeze their current descendants."
+    },
+    "allow_downgrade": {
+      "enum": [
+        "delete_only",
+        "overwrite_best_effort"
+      ],
+      "description": "Overwrite only. Grant for this exact frozen namespace and observed capability, never inherited by descendants."
+    }
+  }
+}

@@ -1,0 +1,222 @@
+{
+  "schema": "windows_agent_cleanup.owner_evidence.v2",
+  "source_zip_sha256": null,
+  "os_build": null,
+  "msvc_version": null,
+  "sdk_version": null,
+  "device": {
+    "model": null,
+    "firmware": null,
+    "bus": null,
+    "media": null,
+    "filesystem": null
+  },
+  "build_log_directory": null,
+  "tests": [
+    {
+      "id": "release_build",
+      "status": "not_run",
+      "evidence_files": [],
+      "notes": ""
+    },
+    {
+      "id": "vendor_std_module_build",
+      "status": "not_run",
+      "evidence_files": [],
+      "notes": ""
+    },
+    {
+      "id": "owned_named_modules_and_private_partitions",
+      "status": "not_run",
+      "evidence_files": [],
+      "notes": ""
+    },
+    {
+      "id": "release_flags_static_runtime_no_pdb",
+      "status": "not_run",
+      "evidence_files": [],
+      "notes": ""
+    },
+    {
+      "id": "windows_toolchain_bootstrap_and_discovery",
+      "status": "not_run",
+      "evidence_files": [],
+      "notes": ""
+    },
+    {
+      "id": "safe_ctest",
+      "status": "not_run",
+      "evidence_files": [],
+      "notes": ""
+    },
+    {
+      "id": "windows_backend_isolated",
+      "status": "not_run",
+      "evidence_files": [],
+      "notes": ""
+    },
+    {
+      "id": "state_store_isolated",
+      "status": "not_run",
+      "evidence_files": [],
+      "notes": ""
+    },
+    {
+      "id": "gui_integration",
+      "status": "not_run",
+      "evidence_files": [],
+      "notes": ""
+    },
+    {
+      "id": "cli_integration",
+      "status": "not_run",
+      "evidence_files": [],
+      "notes": ""
+    },
+    {
+      "id": "ads_races",
+      "status": "not_run",
+      "evidence_files": [],
+      "notes": ""
+    },
+    {
+      "id": "hardlinks",
+      "status": "not_run",
+      "evidence_files": [],
+      "notes": ""
+    },
+    {
+      "id": "readonly_resume",
+      "status": "not_run",
+      "evidence_files": [],
+      "notes": ""
+    },
+    {
+      "id": "power_loss_resume",
+      "status": "not_run",
+      "evidence_files": [],
+      "notes": ""
+    },
+    {
+      "id": "system_protection",
+      "status": "not_run",
+      "evidence_files": [],
+      "notes": ""
+    },
+    {
+      "id": "process_lock_release",
+      "status": "not_run",
+      "evidence_files": [],
+      "notes": ""
+    },
+    {
+      "id": "vss_inventory",
+      "status": "not_run",
+      "evidence_files": [],
+      "notes": ""
+    },
+    {
+      "id": "physical_device_queue",
+      "status": "not_run",
+      "evidence_files": [],
+      "notes": ""
+    },
+    {
+      "id": "resource_bounds",
+      "status": "not_run",
+      "evidence_files": [],
+      "notes": ""
+    },
+    {
+      "id": "hdd",
+      "status": "not_run",
+      "evidence_files": [],
+      "notes": ""
+    },
+    {
+      "id": "ssd",
+      "status": "not_run",
+      "evidence_files": [],
+      "notes": ""
+    },
+    {
+      "id": "usb",
+      "status": "not_run",
+      "evidence_files": [],
+      "notes": ""
+    },
+    {
+      "id": "ntfs",
+      "status": "not_run",
+      "evidence_files": [],
+      "notes": ""
+    },
+    {
+      "id": "refs",
+      "status": "not_run",
+      "evidence_files": [],
+      "notes": ""
+    },
+    {
+      "id": "fat32",
+      "status": "not_run",
+      "evidence_files": [],
+      "notes": ""
+    },
+    {
+      "id": "exfat",
+      "status": "not_run",
+      "evidence_files": [],
+      "notes": ""
+    },
+    {
+      "id": "windows_11_baseline_22000",
+      "status": "not_run",
+      "evidence_files": [],
+      "notes": ""
+    },
+    {
+      "id": "windows_11_target",
+      "status": "not_run",
+      "evidence_files": [],
+      "notes": ""
+    },
+    {
+      "id": "agent_manifest_batch",
+      "status": "not_run",
+      "evidence_files": [],
+      "notes": ""
+    },
+    {
+      "id": "scope_and_report_alias_rejection",
+      "status": "not_run",
+      "evidence_files": [],
+      "notes": ""
+    },
+    {
+      "id": "resource_pressure_admission",
+      "status": "not_run",
+      "evidence_files": [],
+      "notes": ""
+    },
+    {
+      "id": "over_100000_small_files",
+      "status": "not_run",
+      "evidence_files": [],
+      "notes": ""
+    },
+    {
+      "id": "large_gui_queue_reconcile",
+      "status": "not_run",
+      "evidence_files": [],
+      "notes": ""
+    }
+  ],
+  "physical_sanitization_guaranteed": false,
+  "cmake_version": null,
+  "ninja_version": null,
+  "std_module_provider_path": null,
+  "std_module_provider_sha256": null,
+  "actual_cxx_standard_flag": null,
+  "source_commit": null
+}

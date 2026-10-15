@@ -1,0 +1,93 @@
+{
+  "schema": "secure_erase.cli_quick_amendment.v1",
+  "version": "1.0.0-rc.4",
+  "authority": {
+    "request": "我希望CLI也包含快速刪除功能  專職於超高速單或批量文件目錄清理 並書寫一個README_AI.md 另外希望還能借鑑steam刪除的方法讓被刪除的空間更快的被列為可用",
+    "continuation": "繼續",
+    "authority_status": "direct_user_text",
+    "implementation_authorized": true
+  },
+  "relationship_to_original_57": "Add CLI quick namespace deletion and space observation to the previously authorized quick mode; preserve original overwrite requirements, protection and testing responsibility. The earlier RC3 GUI-only statement is historical.",
+  "requirements": [
+    {
+      "id": "c01",
+      "text": "Expose quick permanent deletion in the CLI for explicit single or mixed file/directory roots after --; preserve the original overwrite commands.",
+      "implementation": [
+        "src/cli/main.cpp",
+        "src/app/cli_arguments.cpp"
+      ],
+      "validation_status": "see_current_validation_report"
+    },
+    {
+      "id": "c02",
+      "text": "Without confirmation quick only prepares an inert in-session preview. With --confirm-irreversible freeze roots once and execute that exact in-session fingerprint; no persisted quick job or cross-process resume.",
+      "implementation": [
+        "src/cli/main.cpp",
+        "src/app/application.cpp"
+      ],
+      "validation_status": "see_current_validation_report"
+    },
+    {
+      "id": "c03",
+      "text": "Share frozen membership, system/reparse protection, identity checks and failure-last access/graceful-close recovery. Noninteractive quick never authorizes force termination.",
+      "implementation": [
+        "src/core/quick_delete.cpp",
+        "src/windows/windows_backend.cpp",
+        "src/cli/main.cpp"
+      ],
+      "validation_status": "see_current_validation_report"
+    },
+    {
+      "id": "c04",
+      "text": "Emit compact JSONL quick summaries and failed/pending target details by default; --show-paths emits all targets and paths. Preserve explicit nonzero partial/execution/output exits and protected logs.",
+      "implementation": [
+        "src/cli/main.cpp",
+        "src/app/cli_arguments.cpp"
+      ],
+      "validation_status": "see_current_validation_report"
+    },
+    {
+      "id": "c05",
+      "text": "Prefer larger observed allocation first among pending first-pass files with bounded workers, then child-first directories. Allocation is a fingerprint-bound scheduling hint, not identity or reclaimable-byte evidence.",
+      "implementation": [
+        "src/core/quick_delete.cpp",
+        "src/modules/quick_delete.ixx",
+        "src/windows/windows_backend.cpp"
+      ],
+      "validation_status": "see_current_validation_report"
+    },
+    {
+      "id": "c06",
+      "text": "Observe at most 128 prepared eligible volume GUID roots before/after quick execution using read-only current-principal space counters. Distinguish quota-available and total-free counters; failures are diagnostic and deltas are not attributed to this job.",
+      "implementation": [
+        "src/app/application.cpp",
+        "src/windows/windows_backend.cpp",
+        "src/cli/main.cpp"
+      ],
+      "validation_status": "see_current_validation_report"
+    },
+    {
+      "id": "c07",
+      "text": "Provide README_AI.md with exact CLI contract, automation examples, result/exit handling, limits, build requirements and evidence boundaries. The explicitly requested filename is retained.",
+      "implementation": [
+        "README_AI.md"
+      ],
+      "validation_status": "see_current_validation_report"
+    },
+    {
+      "id": "c08",
+      "text": "Preserve source RC/native-test responsibility gates and module architecture. Do not claim an undocumented Steam algorithm or guaranteed immediate capacity; do not truncate shared contents or issue raw device reclaim commands.",
+      "implementation": [
+        "README_AI.md",
+        "docs/windows_test_plan.md",
+        "scripts/validate.py"
+      ],
+      "validation_status": "see_current_validation_report"
+    }
+  ],
+  "research_boundary": "Valve official install-script and SteamPipe documentation do not publish a client uninstall allocation-release algorithm. Largest-allocation-first is this project scheduling heuristic, not a verified Steam implementation.",
+  "windows_tests_owner": "user",
+  "allocation_release_guaranteed": false,
+  "physical_sanitization_guaranteed": false,
+  "throughput_maximum_proven": false
+}

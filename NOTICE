@@ -1,0 +1,10 @@
+﻿Windows Agent Cleanup
+Copyright (c) 2026 bestkakkoii and contributors. MIT licensed.
+
+Dear ImGui is retrieved at the immutable revision and per-file hashes in
+ dependencies.lock.json. Its MIT license is restored unchanged with its sources
+and included in offline source/binary distributions. Windows SDK, MSVC and system
+libraries remain under their respective licenses; they are not re-licensed here.
+
+CMake and Ninja are build tools, not bundled runtime libraries. Their upstream
+source licenses are retained when bootstrap sources are redistributed.

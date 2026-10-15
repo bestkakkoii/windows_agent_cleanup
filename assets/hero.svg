@@ -1,0 +1,17 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="420" viewBox="0 0 1280 420" role="img" aria-label="Windows Agent Cleanup — native cleanup for coding agents">
+  <rect width="1280" height="420" rx="24" fill="#0f172a"/>
+  <path d="M900 0h380v420H780z" fill="#122838"/>
+  <g transform="translate(72 116)">
+    <rect width="144" height="144" rx="28" fill="#183344"/>
+    <rect x="26" y="28" width="27" height="27" rx="5" fill="#34d399"/>
+    <rect x="65" y="28" width="27" height="27" rx="5" fill="#22d3ee"/>
+    <rect x="26" y="67" width="27" height="27" rx="5" fill="#22d3ee"/>
+    <path d="M65 72h25V58l34 30-34 29v-16H65z" fill="#f8fafc"/>
+  </g>
+  <g font-family="Segoe UI,Arial,sans-serif">
+    <text x="254" y="166" font-size="21" fill="#34d399" letter-spacing="3">NATIVE WINDOWS · AGENT FIRST</text>
+    <text x="250" y="226" font-size="54" font-weight="700" fill="#f8fafc">Windows Agent Cleanup</text>
+    <text x="254" y="270" font-size="24" fill="#cbd5e1">Bulk cleanup. Explicit scope. Evidence you can inspect.</text>
+    <text x="254" y="333" font-size="19" fill="#94a3b8">C++ Modules  /  Native CLI + GUI  /  Windows 11+</text>
+  </g>
+</svg>

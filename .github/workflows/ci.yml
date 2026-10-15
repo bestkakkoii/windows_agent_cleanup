@@ -1,0 +1,57 @@
+name: source_and_windows
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  source_contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ff73b2463e2f3baa703f830da214b8dfeeaeccf8
+        with:
+          python-version: '3.x'
+      - name: Check maintained sources and module boundaries
+        run: python scripts/validate.py --output-dir build/source_validation
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: source_contract_${{ github.sha }}
+          path: build/source_validation/
+          retention-days: 14
+          if-no-files-found: error
+
+  native_windows:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+        with:
+          persist-credentials: false
+      - name: Build pinned tools and Release modules; run isolated fixtures
+        shell: powershell
+        run: >-
+          & ./scripts/build_windows.ps1 -mode validate
+          -enable_isolated_destructive_tests
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: native_windows_evidence_${{ github.sha }}
+          path: |
+            build_logs/
+            build/windows_release/Testing/Temporary/
+          retention-days: 14
+          if-no-files-found: error

@@ -1,0 +1,135 @@
+{
+  "schema": "secure_erase.quick_delete_amendment.v1",
+  "version": "1.0.0-rc.3",
+  "approved_date": "2026-10-14",
+  "approval_timezone": "Asia/Taipei",
+  "authority": {
+    "request": "面板上東西太多不構單純沒用的東西都可以刪剪掉了 冗於得也是 都完成清理後 加入一個新功能 快速刪除模式 該模式以系統極限速度來刪除文件 保留解除句炳功能(但不是先檢測而是失敗才檢測) 把所有失敗全都集中到最後處理 講究一個快字 盡全力想一切辦法把文件乾淨的刪除掉 不需要考慮是否可回朔 你可以先問我必要的問題",
+    "approval": "按推薦的來",
+    "resolved_choices": {
+      "process_termination": "normal_close_then_fresh_individual_force_confirmation",
+      "access_recovery": "allowed_for_failed_selected_non_system_targets",
+      "target_membership": "frozen_before_execute_replacements_and_additions_excluded"
+    },
+    "resolution_communicated_before_implementation": true
+  },
+  "relationship_to_original_57": "Original requirements remain authoritative for overwrite mode. This explicit new mode adds namespace deletion semantics and simplified presentation; it does not weaken system protection or authorize arbitrary process termination. R44 identity deduplication remains for overwrite; quick mode deduplicates namespace selections, preserving selected hardlink names. Quick pause/retry is in-session only, without persistent erase checkpoints.",
+  "requirements": [
+    {
+      "id": "q01",
+      "text": "Replace the four-tab workflow with one primary list, explicit mode selection, essential actions and compact progress. Move diagnostics/recovery/resource tuning behind collapsed details.",
+      "implementation": [
+        "src/gui/main.cpp"
+      ],
+      "validation_status": "see_current_validation_report"
+    },
+    {
+      "id": "q02",
+      "text": "Add a distinct quick permanent-delete mode that bypasses the recycle bin and does not overwrite, read back, issue file TRIM or perform VSS/ADS sanitization analysis.",
+      "implementation": [
+        "src/modules/quick_delete.ixx",
+        "src/core/quick_delete.cpp",
+        "src/windows/windows_backend.cpp"
+      ],
+      "validation_status": "see_current_validation_report"
+    },
+    {
+      "id": "q03",
+      "text": "Freeze selected namespaces before confirmation; revalidate original identity, creation time, type, protected status and nofollow ancestors before mutation. New or replaced objects are excluded.",
+      "implementation": [
+        "src/core/quick_delete.cpp",
+        "src/windows/windows_backend.cpp"
+      ],
+      "validation_status": "see_current_validation_report"
+    },
+    {
+      "id": "q04",
+      "text": "Complete the fast pass before attempting failure recovery. Do not query locks, close programs or recover access for targets that have not failed. Retain per-path preparation failures and continue accessible siblings.",
+      "implementation": [
+        "src/core/quick_delete.cpp",
+        "src/windows/windows_backend.cpp"
+      ],
+      "validation_status": "see_current_validation_report"
+    },
+    {
+      "id": "q05",
+      "text": "Attempt normal closing of eligible lock owners in the final phase, deduplicate equivalent process actions, and require fresh individual process confirmation for any forced termination.",
+      "implementation": [
+        "src/core/quick_delete.cpp",
+        "src/app/application.cpp",
+        "src/windows/windows_backend.cpp",
+        "src/windows/backend_locks.cpp",
+        "src/gui/main.cpp"
+      ],
+      "validation_status": "see_current_validation_report"
+    },
+    {
+      "id": "q06",
+      "text": "Allow targeted access recovery only for failed, frozen, non-system targets. Prefer scoped thread privileges with unchanged persistent owner/DACL; fail explicitly if safe recovery is unavailable.",
+      "implementation": [
+        "src/windows/windows_backend.cpp"
+      ],
+      "validation_status": "see_current_validation_report"
+    },
+    {
+      "id": "q07",
+      "text": "Delete all explicitly selected hardlink namespaces independently; preserve unselected aliases and never overwrite shared contents. Keep existing reparse rejection/no-follow and system protection.",
+      "implementation": [
+        "src/core/quick_delete.cpp",
+        "src/windows/windows_backend.cpp"
+      ],
+      "validation_status": "see_current_validation_report"
+    },
+    {
+      "id": "q08",
+      "text": "Use bounded parallel work and bounded retry counts. Process directory removal after children. Pause/cancel stop remaining work; quick retry uses only the in-session frozen plan and its bound report.",
+      "implementation": [
+        "src/core/quick_delete.cpp",
+        "src/app/application.cpp"
+      ],
+      "validation_status": "see_current_validation_report"
+    },
+    {
+      "id": "q09",
+      "text": "Quick outcomes report namespace removal only; no recoverability, reclaimed-space, physical-erasure or platform-maximum-throughput claim. Keep errors and finalization failures visible.",
+      "implementation": [
+        "src/modules/quick_delete.ixx",
+        "src/app/application.cpp",
+        "src/gui/main.cpp"
+      ],
+      "validation_status": "see_current_validation_report"
+    },
+    {
+      "id": "q10",
+      "text": "Keep diagnostics without per-file durable logging in the fast pass: durable job boundaries, final failed-target details in validated bounded batches, existing private logs/rotation.",
+      "implementation": [
+        "src/modules/state_store.ixx",
+        "src/windows/state_store.cpp",
+        "src/app/application.cpp"
+      ],
+      "validation_status": "see_current_validation_report"
+    },
+    {
+      "id": "q11",
+      "text": "Preserve overwrite-mode guarantees, module-first architecture, original toolchain/encoding constraints and source RC/native test responsibility gates.",
+      "implementation": [
+        "AGENTS.md",
+        "CMakeLists.txt",
+        "docs/authority.md"
+      ],
+      "validation_status": "see_current_validation_report"
+    },
+    {
+      "id": "q12",
+      "text": "Successfully completed entries leave the input list; failures and ambiguous aliases remain. Confirmation cannot authorize a different mode, queue generation or fingerprint.",
+      "implementation": [
+        "src/gui/main.cpp",
+        "src/app/application.cpp"
+      ],
+      "validation_status": "see_current_validation_report"
+    }
+  ],
+  "windows_tests_owner": "user",
+  "physical_sanitization_guaranteed": false,
+  "throughput_maximum_proven": false
+}

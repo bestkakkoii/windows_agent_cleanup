@@ -1,0 +1,51 @@
+{
+  "schema": "windows_agent_cleanup.project.v2",
+  "version": "2.0.0-rc.1",
+  "repository": "https://github.com/bestkakkoii/windows_agent_cleanup",
+  "implementation_authorized": "2026-10-15",
+  "normal_commit_and_push_authorized": true,
+  "target": {
+    "platform": "Windows11+",
+    "minimum_build": 22000,
+    "architecture": "x64"
+  },
+  "interfaces": {
+    "gui": "DearImGui/Win32/DX11",
+    "cli": "native_machine_only",
+    "mcp": false,
+    "universal_agent_entry": "README_AI.md",
+    "skills": "optional thin portable routing"
+  },
+  "invariants": [
+    "whole-batch membership frozen before deletion",
+    "fresh selected-name identity and system protection checks",
+    "no reparse traversal",
+    "quick failures recovered after first pass",
+    "individual forced-process confirmation",
+    "no fixed quick target-count ceiling",
+    "bounded resources based on live availability",
+    "no silent truncation",
+    "no physical NAND guarantee"
+  ],
+  "runtime_modes": [
+    "quick logical delete",
+    "verified logical overwrite with explicit downgrade grants"
+  ],
+  "evidence": {
+    "windows_compilation_and_hardware_owner": "user; CI may supply separately scoped native evidence",
+    "required_test_gates": "57 approved base decisions and risk-specific tests",
+    "missing_platform_evidence": "RC only"
+  },
+  "git_policy": {
+    "tracked": "maintained source/config/docs/assets/tests and immutable dependency locks",
+    "excluded": [
+      "outputs",
+      "cache",
+      "downloaded dependencies",
+      "raw logs",
+      "one-off reports",
+      "archives",
+      "temporary handoffs"
+    ]
+  }
+}
