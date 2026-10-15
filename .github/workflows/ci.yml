@@ -62,8 +62,7 @@ jobs:
       - name: Build pinned tools and Release modules; run isolated fixtures
         shell: powershell
         run: >-
-          & ./scripts/build_windows.ps1 -mode validate
-          -enable_isolated_destructive_tests
+          & ./scripts/build_windows.ps1 -enable_isolated_destructive_tests
       - name: Assemble and verify unpublished development test sources
         shell: pwsh
         run: |

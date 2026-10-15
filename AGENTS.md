@@ -41,3 +41,8 @@ Windows or hardware evidence. No NAND sanitization guarantee. Both RC and Releas
 evidence and review for the exact revision. CI alone produces unpublished
 development test artifacts; never publish from a commit-message marker. Missing
 platform evidence prevents Release even after an RC is approved.
+
+For the owner-directed `v2.0.0` first public distribution, follow the explicit
+exception in docs/publication.md: use owner-supplied EXE bytes unchanged and
+disclose pending CLI/hardware acceptance. Never extend that authorization to
+another version or present pending cases as passed.

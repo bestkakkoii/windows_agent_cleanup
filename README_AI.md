@@ -41,16 +41,19 @@ model SDK or MCP service is needed to run the native program.
 
 If the EXE is missing from a source checkout, building is separate engineering
 work. Read [CONTRIBUTING.md](CONTRIBUTING.md) and the engineering contract; use
-`build_release.bat` to compile, then `validate_windows.bat` from an already
-elevated terminal to run native checks. Build mode does not execute tests. The
-one-click bootstrap selects installed MSVC/SDK components and builds exact locked CMake/Ninja sources in an
-ignored private cache. First build needs network and takes longer than cached
+`build_release.bat` to compile, check embedded manifests and run the safe native
+suites in one command. The default flow works under an ordinary effective token
+and does not request elevation. Add `-enable_isolated_destructive_tests` only
+from an already elevated terminal to also run disposable destructive fixtures.
+The one-click bootstrap selects installed MSVC/SDK components and builds exact
+locked CMake/Ninja sources in an ignored private cache. First build needs network and takes longer than cached
 rebuilds. Preserve `build_logs/<run_id>` for diagnosis. Before destructive
 fixture opt-in read [Windows test plan](docs/windows_test_plan.md).
 
-RC or Release publication waits for the owner's returned build/test evidence
-and acceptance. CI checks or an existing tag do not replace that gate. Follow
-[CONTRIBUTING.md](CONTRIBUTING.md) for packaging and publication. Verify source
+Publishing is separate from the build command. Follow
+[CONTRIBUTING.md](CONTRIBUTING.md) for the current packaging, evidence and
+publication requirements. CI checks establish only their recorded scope, and
+an existing tag does not establish acceptance. Verify source
 archives without extracting/executing their contents using
 `python scripts/verify_package.py PATH --expected-commit COMMIT --expected-sha256 SHA256`,
 with expectations obtained from the trusted repository/delivery record.

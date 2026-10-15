@@ -14,7 +14,7 @@ if ($parse_errors.Count -ne 0)
 # execute the build entrypoint. Child-process fixtures are confined to this test directory.
 foreach ($helper_name in @('read_junit_evidence', 'read_tool_version', 'read_embedded_manifest', 'invoke_logged',
     'get_file_sha256', 'ensure_locked_tools', 'assert_no_external_build_flags', 'assert_owned_source_encoding',
-    'invoke_validation_suites'))
+    'invoke_test_suites'))
 {
     $helper = $ast.Find({ param($node)
         $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $helper_name
@@ -35,7 +35,7 @@ $manifest_checks = 0
 $hash_checks = 0
 $bootstrap_checks = 0
 $source_encoding_checks = 0
-$mode_checks = 0
+$test_flow_checks = 0
 $native_charset_checks = 0
 $native_charset_status = 'not_run_non_windows_host'
 $hash_fixture = Join-Path $directory 'hash_[literal]_fixture.bin'
@@ -131,98 +131,87 @@ try
     }
     $source_encoding_checks += 1
     $checks += $source_encoding_checks
-    # REGRESSION: Exercise actual suite orchestration with only native execution
-    # replaced. Real JUnit evidence parsing stays in the path; no test binaries
-    # are executed by these mode/privilege fixtures.
-    $mode_checks = & {
-        $log_directory = Join-Path $directory 'mode fixture'
+    # REGRESSION: Exercise the unified build/test dispatcher with only native
+    # execution replaced. Real JUnit parsing remains in the path; no test binary
+    # is executed by these default/opt-in/privilege fixtures.
+    $test_flow_checks = & {
+        $log_directory = Join-Path $directory 'test flow fixture'
         [void][IO.Directory]::CreateDirectory($log_directory)
         $stages = New-Object Collections.Generic.List[object]
-        $skip_fixture = $false
-        $fail_fixture = $false
+        $skip_stage = ''
+        $fail_stage = ''
         function invoke_logged([string]$stage, [string]$executable, [string[]]$arguments)
         {
             $stages.Add([PSCustomObject]@{stage=$stage;arguments=$arguments})
-            if ($fail_fixture)
+            if ($stage -ceq $fail_stage)
             {
-                throw 'tool.failed:mode_fixture:23'
+                throw 'tool.failed:test_flow_fixture:23'
             }
-            $skipped_xml = if ($skip_fixture) { '<skipped/>' } else { '' }
+            $skipped_xml = if ($stage -ceq $skip_stage) { '<skipped/>' } else { '' }
             $xml = '<testsuite><testcase name="' + $stage + '">' + $skipped_xml + '</testcase></testsuite>'
             [IO.File]::WriteAllText($arguments[-1], $xml, $utf8)
         }
         $completed = 0
         foreach ($elevated in @($false, $true))
         {
-            foreach ($destructive in @($false, $true))
+            $stages.Clear()
+            $result = invoke_test_suites $false $elevated 'fixture ctest.exe' 'fixture build'
+            if ($stages.Count -ne 1 -or $stages[0].stage -cne 'safe_tests' -or '-LE' -cnotin $stages[0].arguments -or
+                $result.safe.status -cne 'passed' -or $result.safe.cases -ne 1 -or
+                $result.isolated.status -cne 'not_run' -or $result.isolated.reason -cne 'destructive_tests_not_enabled')
             {
-                $result = invoke_validation_suites 'build' $destructive $elevated 'fixture ctest.exe' 'fixture build'
-                if ($stages.Count -ne 0 -or $result.safe.status -cne 'not_run' -or
-                    $result.isolated.status -cne 'not_run' -or $result.safe.reason -cne 'build_only_mode' -or
-                    $result.isolated.reason -cne 'build_only_mode' -or $result.safe.cases -ne 0 -or $result.isolated.cases -ne 0)
-                {
-                    throw 'build_script.build_mode_executed_or_claimed_tests'
-                }
-                $completed += 1
-            }
-        }
-        foreach ($destructive in @($false, $true))
-        {
-            $observed_error = ''
-            try { $null = invoke_validation_suites 'validate' $destructive $false 'fixture ctest.exe' 'fixture build' }
-            catch { $observed_error = $_.Exception.Message }
-            if ($stages.Count -ne 0 -or -not $observed_error.StartsWith('validation.administrator_required:', [StringComparison]::Ordinal) -or
-                -not $observed_error.Contains('validate_windows.bat') -or -not $observed_error.Contains('tests were not started'))
-            {
-                throw 'build_script.validate_elevation_gate_bypassed'
+                throw 'build_script.default_build_did_not_run_only_safe_suites'
             }
             $completed += 1
         }
-        $result = invoke_validation_suites 'validate' $false $true 'fixture ctest.exe' 'fixture build'
-        if ($stages.Count -ne 1 -or $stages[0].stage -cne 'safe_tests' -or '-LE' -cnotin $stages[0].arguments -or
-            $result.safe.status -cne 'passed' -or $result.safe.cases -ne 1 -or
-            $result.isolated.status -cne 'not_run' -or $result.isolated.reason -cne 'destructive_tests_not_enabled')
+        $stages.Clear()
+        $observed_error = ''
+        try { $null = invoke_test_suites $true $false 'fixture ctest.exe' 'fixture build' }
+        catch { $observed_error = $_.Exception.Message }
+        if ($stages.Count -ne 0 -or -not $observed_error.StartsWith('validation.administrator_required:', [StringComparison]::Ordinal) -or
+            -not $observed_error.Contains('build_release.bat -enable_isolated_destructive_tests') -or
+            -not $observed_error.Contains('tests were not started'))
         {
-            throw 'build_script.safe_validation_contract_changed'
+            throw 'build_script.isolated_fixture_elevation_gate_bypassed'
         }
         $completed += 1
-        $stages.Clear()
-        $result = invoke_validation_suites 'validate' $true $true 'fixture ctest.exe' 'fixture build'
+        $result = invoke_test_suites $true $true 'fixture ctest.exe' 'fixture build'
         if ($stages.Count -ne 2 -or $stages[0].stage -cne 'safe_tests' -or $stages[1].stage -cne 'isolated_destructive_tests' -or
             '-L' -cnotin $stages[1].arguments -or $result.safe.status -cne 'passed' -or $result.isolated.status -cne 'passed')
         {
-            throw 'build_script.opt_in_validation_contract_changed'
+            throw 'build_script.opt_in_test_contract_changed'
         }
         $completed += 1
-        $stages.Clear()
-        $skip_fixture = $true
-        $result = invoke_validation_suites 'validate' $false $true 'fixture ctest.exe' 'fixture build'
-        if ($result.safe.status -cne 'not_run' -or $result.safe.skipped -ne 1)
+        foreach ($skipped_stage in @('safe_tests', 'isolated_destructive_tests'))
         {
-            throw 'build_script.validation_skip_falsely_passed'
+            $stages.Clear()
+            $skip_stage = $skipped_stage
+            $result = invoke_test_suites $true $true 'fixture ctest.exe' 'fixture build'
+            $evidence = if ($skipped_stage -ceq 'safe_tests') { $result.safe } else { $result.isolated }
+            if ($evidence.status -cne 'not_run' -or $evidence.skipped -ne 1)
+            {
+                throw ('build_script.test_skip_falsely_passed:' + $skipped_stage)
+            }
+            $completed += 1
         }
-        $completed += 1
-        $stages.Clear()
-        $fail_fixture = $true
-        $observed_error = ''
-        try { $null = invoke_validation_suites 'validate' $true $true 'fixture ctest.exe' 'fixture build' }
-        catch { $observed_error = $_.Exception.Message }
-        if ($observed_error -cne 'tool.failed:mode_fixture:23' -or $stages.Count -ne 1)
+        $skip_stage = ''
+        foreach ($failed_stage in @('safe_tests', 'isolated_destructive_tests'))
         {
-            throw 'build_script.failed_safe_suite_ignored'
+            $stages.Clear()
+            $fail_stage = $failed_stage
+            $observed_error = ''
+            try { $null = invoke_test_suites $true $true 'fixture ctest.exe' 'fixture build' }
+            catch { $observed_error = $_.Exception.Message }
+            $expected_stages = if ($failed_stage -ceq 'safe_tests') { 1 } else { 2 }
+            if ($observed_error -cne 'tool.failed:test_flow_fixture:23' -or $stages.Count -ne $expected_stages)
+            {
+                throw ('build_script.failed_test_suite_ignored:' + $failed_stage)
+            }
+            $completed += 1
         }
-        $completed += 1
-        $stages.Clear()
-        $observed_error = ''
-        try { $null = invoke_validation_suites 'unknown' $false $true 'fixture ctest.exe' 'fixture build' }
-        catch { $observed_error = $_.Exception.Message }
-        if ($observed_error -cne 'validation.mode_invalid' -or $stages.Count -ne 0)
-        {
-            throw 'build_script.unknown_validation_mode_accepted'
-        }
-        return ($completed + 1)
+        return $completed
     }
-    $checks += $mode_checks
+    $checks += $test_flow_checks
     # REGRESSION: Execute the actual bootstrap planner against generated source
     # archives and stand-in compiler outputs. Capture both real configure argv;
     # this tests the compiler policy at its consumer and cache-admission boundary.
@@ -823,7 +812,7 @@ try
     $checks += 1
     $manifest_checks += 1
     [Console]::Out.WriteLine((@{schema='secure_erase.test.v1';suite='build_script_helpers';checks=$checks;manifest_checks=$manifest_checks;hash_checks=$hash_checks;
-        bootstrap_checks=$bootstrap_checks;source_encoding_checks=$source_encoding_checks;mode_checks=$mode_checks;
+        bootstrap_checks=$bootstrap_checks;source_encoding_checks=$source_encoding_checks;test_flow_checks=$test_flow_checks;
         native_charset_checks=$native_charset_checks;native_charset_status=$native_charset_status;status='passed'} | ConvertTo-Json -Compress))
 }
 finally

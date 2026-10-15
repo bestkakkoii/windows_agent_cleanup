@@ -2,6 +2,32 @@
 
 Current status: unpublished development test source, `2.0.0-dev.1`.
 
+## Owner-directed first public distribution
+
+On 2026-10-16 (Asia/Taipei), the owner reported successful GUI quick deletion
+and verified overwrite, supplied both compiled executables, and explicitly
+requested a normal GitHub Release before subsequent Agent-driven CLI testing.
+For distribution `v2.0.0`, that newer instruction supersedes the prior rule
+withholding a full Release until the complete platform matrix is available.
+It is publication authorization, not evidence that pending tests have passed.
+
+Publish the exact supplied GUI and CLI bytes, with their SHA-256 values.
+The application still reports `2.0.0-dev.1`; do not modify PE bytes or rebuild
+substitute executables to change that label. The source distribution includes
+the subsequent unified build-and-test launcher. Its C++ runtime sources remain
+unchanged from `479c3aa44cc918ec09a4c50a8a799ad1c89d9d0d`.
+No independently authenticated source-to-owner-binary commit binding was
+provided; identify the binaries as owner supplied rather than reproducibly
+attested outputs of the release source checkout.
+
+Release notes must retain the pending CLI Agent acceptance, untested hardware
+matrix, and native fixture coverage gaps. In particular, cloud runs which
+cannot identify storage media do not validate successful overwrite on that
+media. The authorization above is specific to this first public distribution;
+it does not authorize later publication or fabricated acceptance evidence.
+The general gates below remain the default for subsequent versions. CI still
+produces development evidence and cannot authorize publication itself.
+
 | Artifact | Gate | GitHub presentation |
 |---|---|---|
 | Development test Source ZIP | Exact committed sources, passing package checks and recorded runtime evidence | Actions artifact or private test handoff; no release/tag creation |

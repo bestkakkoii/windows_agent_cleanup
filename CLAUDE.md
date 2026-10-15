@@ -10,3 +10,6 @@ Use its relative references as needed. Installation does not authorize deletion.
 
 RC and Release publication require owner-returned Windows build/test evidence
 and review of the exact revision. CI produces unpublished test artifacts only.
+The owner-directed first public `v2.0.0` distribution follows the scoped
+exception in `docs/publication.md`; keep supplied binary bytes and pending
+acceptance evidence honest. It does not authorize later publication.

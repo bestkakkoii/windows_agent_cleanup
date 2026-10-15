@@ -49,7 +49,7 @@
     ]
   },
   "publication": {
-    "status": "withheld_pending_owner_evidence",
+    "status": "owner_authorized_first_public_distribution_preparation",
     "automatic_publication": false,
     "ci_distribution": "unpublished development test artifacts only",
     "owner_returned_windows_build_and_test_evidence_required_for": [
@@ -63,7 +63,17 @@
       "os_build",
       "test_results"
     ],
-    "full_release_latest": "only after all applicable mandatory acceptance gates pass"
+    "full_release_latest": "only after all applicable mandatory acceptance gates pass",
+    "first_public_distribution": {
+      "version": "2.0.0",
+      "owner_authorized_local_date": "2026-10-16",
+      "binary_source": "owner_supplied_unchanged",
+      "application_reported_version": "2.0.0-dev.1",
+      "cli_agent_acceptance": "pending",
+      "hardware_matrix": "not_completed",
+      "source_to_binary_commit_binding": "not_independently_attested",
+      "policy": "docs/publication.md"
+    }
   },
   "encoding": {
     "owned_source_files": "UTF-8+BOM; enforced before Windows build and by source validation",

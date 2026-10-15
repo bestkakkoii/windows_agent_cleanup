@@ -14,7 +14,7 @@
 
 Windows Agent Cleanup removes large project cleanup batches through a native C++ core shared by a machine-oriented CLI and a compact desktop GUI. Quick deletion removes selected names without reading or overwriting file contents. The separate overwrite workflow provides explicit, evidence-based sanitization results.
 
-**Status: 2.0.0-dev.1 — unpublished development test source.** RC and Release publication wait for the owner’s returned Windows build/test evidence and review. CI produces test artifacts only; a passing CI run does not authorize publication. This project does not claim a hardware-independent maximum speed or physical NAND sanitization.
+**Application version: 2.0.0-dev.1.** The owner has authorized a first public binary distribution, `v2.0.0`, using the returned GUI/CLI executables unchanged. CLI Agent acceptance and hardware coverage remain explicitly scoped in the [publication policy](docs/publication.md). CI produces test evidence; a passing run alone does not authorize publication. This project does not claim a hardware-independent maximum speed or physical NAND sanitization.
 
 ## Start with your agent
 

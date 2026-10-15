@@ -7,22 +7,23 @@ Use only created disposable fixtures in a VM, disposable volume or dedicated tes
 ## Build evidence
 
 From a clean source checkout, run `build_release.bat` under an ordinary effective
-token. Build mode compiles and checks embedded manifests; it does not execute
-tests. Run `validate_windows.bat` from an already elevated terminal to execute
-the native suites. The CLI uses an as-invoker manifest, while the GUI uses its
-administrator manifest. Current CLI filesystem commands separately require an
-already elevated token; capabilities does not. Verify both the explicit
+token. The same command compiles, checks embedded manifests and executes all
+safe suites. Safe C++ and script fixtures, diagnostics and CLI help do not
+require administrator rights.
+The CLI uses an as-invoker manifest, while the GUI uses its administrator
+manifest. Current CLI filesystem commands separately require an already
+elevated token; capabilities does not. Verify both the explicit
 `elevation_required` refusal and permitted elevated execution without a CLI UAC
-request. Opt-in fixtures that need privileges must run with those privileges
-already available; validation does not grant them. An elevation refusal after
-successful compilation must retain that compilation evidence and mark tests
-not run rather than imply a compiler failure.
+request. Only the explicit `-enable_isolated_destructive_tests` switch requires
+an already elevated token for privileged fixtures; the build never grants it.
+An opt-in elevation refusal after successful compilation retains that
+compilation and manifest evidence and reports tests not started.
 
 Install Visual Studio x64 C++ tools with the vendor standard-library module, a complete Windows SDK 10.0.22000.0+, and a bootstrap CMake 3.15+ (VS-bundled accepted). The script builds exact hash-locked upstream-master CMake 4.5.20261015 and Ninja 1.14.0.git into ignored `build/tools`; installed Ninja is optional because `nmake` can bootstrap it. First build needs network and more compilation time; a valid binary-hash-verified cache supports offline rebuilding without global installation. Preserve all recorded exact identities. Check actual `/std:c++latest`, Release `/O2 /GL /LTCG /MT`, strict diagnostics, no debug instrumentation/PDB, native module ownership and vendor `import std`. A CMake metadata label alone does not prove compiler mode or feature completeness.
 
 Keep the complete `build_logs/<run_id>/` output outside Git. Verify fresh first-build dependency restoration with the locked hashes, a cached offline rebuild, non-ASCII paths and spaces, a fresh bootstrap under system code page 950 with `/utf-8` for C and C++, PATH/fallback tool discovery, clean rebuild without prebuilt IFC/BMI, incompatible std-provider rejection, and Debug rejection. A corrupt dependency must be repaired and reverified or rejected before compilation.
 
-`validate_windows.bat -enable_isolated_destructive_tests` explicitly registers/runs disposable native fixtures. The registered native suites are `agent_cli_windows_isolated`, `windows_backend_isolated`, `state_store_windows_isolated` and `quick_delete_windows_isolated`; safe suites and script/module checks run separately. Fixture unavailability, skipped cases and environmental refusal stay visible at case level. A suite-level pass does not certify a fixture that never ran. The Agent CLI fixture covers actual process input/output, protected reports, mixed batches, authorization/scope rejection, exact lock identity and reparse boundaries. Deterministic console cancellation, successful forced termination and overwrite media acceptance still require their separate evidence.
+`build_release.bat -enable_isolated_destructive_tests` explicitly registers/runs disposable native fixtures. The registered native suites are `agent_cli_windows_isolated`, `windows_backend_isolated`, `state_store_windows_isolated` and `quick_delete_windows_isolated`; safe suites and script/module checks run separately. Fixture unavailability, skipped cases and environmental refusal stay visible at case level. A suite-level pass does not certify a fixture that never ran. The Agent CLI fixture covers actual process input/output, protected reports, mixed batches, authorization/scope rejection, exact lock identity and reparse boundaries. Deterministic console cancellation, successful forced termination and overwrite media acceptance still require their separate evidence.
 
 On a host whose virtual disk reports unknown media, `windows_backend_isolated`
 verifies that overwrite is refused and the fixture's bytes, identity and metadata
@@ -69,3 +70,7 @@ Primary measurement is total time from manifest/discovery through admission, del
 Bind logs, commands, fixture recipe, expected/actual statuses, compiler/SDK/std provider, dependency lock, OS/device/filesystem identities and source/package SHA-256 to one revision. Build logs may reveal local paths; sanitize public excerpts without losing error codes and neighboring context. Keep protected checkpoints private unless diagnosis specifically requires them.
 
 Release requires all applicable mandatory unit/integration/isolated destructive gates and the claimed native platform matrix to pass, with no unresolved blocking safety finding. Both RC and Release publication wait for the owner’s returned Windows build/test evidence and review for the exact revision. CI artifacts remain unpublished development test sources. After owner acceptance, incomplete platform/hardware coverage permits at most an explicitly scoped RC; full Release requires the claimed matrix to pass. Unsupported cases must be explicitly rejected or receive only their independently authorized lower capability. Attestations establish provenance, not runtime correctness, signing or physical NAND erasure.
+
+The owner's later explicit `v2.0.0` first-public-distribution instruction is a
+scoped publication exception documented in [publication policy](publication.md).
+Keep all pending cases and provenance limitations visible when applying it.
