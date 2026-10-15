@@ -287,6 +287,18 @@ namespace native_cli_fixture
         }
         check $exact_namespace_key 'scan_exact_namespace_key'
 
+        $child_namespace = get_canonical_namespace (Join-Path $selected_directory 'direct.txt')
+        $child_record = @(select_exact_scan_target $scan_records $child_namespace)
+        if ($child_record.Count -ne 1)
+        {
+            throw 'fixture_child_namespace_missing'
+        }
+        $hidden_child = invoke_cli @('locks', '--request-id', 'hidden_child_key', '--root', $scope,
+            '--report-dir', $reports, '--path', $selected_directory, '--target-key', [string]$child_record[0].target_key)
+        check ($hidden_child.exit_code -eq 2 -and
+            $hidden_child.record.error_code -eq 'exact_process_target_changed' -and
+            [System.IO.File]::Exists((Join-Path $selected_directory 'direct.txt'))) 'directory_request_cannot_select_hidden_child_key'
+
         $again = invoke_cli (@('scan', '--request-id', 'scan_again') + $common)
         check ($again.exit_code -eq 0 -and $again.record.report_file -ne $scan.record.report_file -and
             [System.IO.File]::Exists([string]$scan.record.report_file)) 'existing_private_store_unique_report'
@@ -320,13 +332,48 @@ namespace native_cli_fixture
         $lock_records = @(read_report $locks $control)
         $our_lock = @($lock_records | Where-Object { $_.schema -eq 'windows_agent_cleanup.lock.v1' -and $_.pid -eq $PID })
         check ($our_lock.Count -eq 1) 'restart_manager_observes_fixture_owned_handle'
-        $wrong_created = ([UInt64]$our_lock[0].created + [UInt64]1).ToString([Globalization.CultureInfo]::InvariantCulture)
+        $wrong_created_value = [UInt64]$our_lock[0].created + [UInt64]1
+        $wrong_created = $wrong_created_value.ToString([Globalization.CultureInfo]::InvariantCulture)
+        if ($wrong_created -cnotmatch '^[0-9]+$' -or
+            [UInt64]::Parse($wrong_created, [Globalization.CultureInfo]::InvariantCulture) -eq [UInt64]$our_lock[0].created)
+        {
+            throw 'fixture_stale_creation_time_not_exact'
+        }
+        # Protected lock records may deliberately omit their image. Use this
+        # fixture's independently known self-image to submit a complete tuple.
+        $fixture_process = [System.Diagnostics.Process]::GetCurrentProcess()
+        try
+        {
+            $fixture_image = $fixture_process.MainModule.FileName
+        }
+        finally
+        {
+            $fixture_process.Dispose()
+        }
+        if ([string]::IsNullOrEmpty($fixture_image))
+        {
+            throw 'fixture_self_image_unavailable'
+        }
         $release = invoke_cli @('release', '--request-id', 'stale_process', '--root', $scope,
             '--report-dir', $reports, '--path', $single, '--target-key', [string]$selected[0].target_key,
-            '--pid', $PID.ToString(), '--created', $wrong_created, '--image', [string]$our_lock[0].image,
+            '--pid', $PID.ToString(), '--created', $wrong_created, '--image', $fixture_image,
             '--authorize-close', '--authorize-force')
-        check ($release.exit_code -eq 2 -and $release.record.error_code -eq 'exact_process_tuple_changed' -and
-            $held_file.CanRead) 'stale_process_tuple_never_closes_fixture_host'
+        $held_file_can_read = $held_file.CanRead
+        $stale_tuple_rejected = $release.exit_code -eq 2 -and
+            $release.record.error_code -eq 'exact_process_tuple_changed' -and $held_file_can_read
+        if (-not $stale_tuple_rejected)
+        {
+            emit_event @{ event = 'stale_process_tuple_mismatch'; exit_code = $release.exit_code;
+                status = (bounded_namespace ([string]$release.record.status));
+                error_code = (bounded_namespace ([string]$release.record.error_code)); native_code = $release.record.native_code;
+                request_id = (bounded_namespace ([string]$release.record.request_id));
+                wrong_created = $wrong_created; wrong_created_type = $wrong_created_value.GetType().FullName;
+                observed_created = (bounded_namespace ([string]$our_lock[0].created));
+                observed_image = (bounded_namespace ([string]$our_lock[0].image));
+                observed_eligible = $our_lock[0].eligible; observed_reason = (bounded_namespace ([string]$our_lock[0].reason));
+                requested_image = (bounded_namespace $fixture_image); held_file_can_read = $held_file_can_read }
+        }
+        check $stale_tuple_rejected 'stale_process_tuple_never_closes_fixture_host'
         $held_file.Dispose()
         $held_file = $null
 

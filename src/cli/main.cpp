@@ -824,6 +824,20 @@ namespace
         }
     }
 
+    bool selected_process_namespace(std::span<const quick::target> prepared, const quick::target& selected)
+    {
+        // CONTRACT: prepare receives exactly one input root. If it emits children,
+        // it also emits that root directory, including enumeration failures. A
+        // proper prepared canonical ancestor therefore proves a hidden child;
+        // raw input spelling is not compared with canonical long/8.3 spelling.
+        return selected.preparation_error.code.empty() && !std::ranges::any_of(prepared, [&](const auto& candidate)
+        {
+            return candidate.directory && candidate.path.size() < selected.path.size() &&
+                selected.path.starts_with(candidate.path) &&
+                (candidate.path.ends_with('\\') || selected.path[candidate.path.size()] == '\\');
+        });
+    }
+
     void process_operation(const cli::arguments& args, storage::state_store& store,
         report_file& output, summary& result)
     {
@@ -841,9 +855,7 @@ namespace
         {
             return quick::target_key(target) == args.target_key;
         });
-        if (found == targets.end() || !found->preparation_error.code.empty() ||
-            !agent::within_scope(require(agent::normalize_path(found->path)), args.path) ||
-            !agent::within_scope(args.path, require(agent::normalize_path(found->path))))
+        if (found == targets.end() || !selected_process_namespace(targets, *found))
         {
             fail("exact_process_target_changed");
         }
