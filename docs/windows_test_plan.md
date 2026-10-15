@@ -109,14 +109,25 @@ the scoped CLI Quick pilot below. Broader CLI Agent acceptance and the full
 hardware matrix remain pending. The supplied
 binaries have no independently authenticated binding to a source commit.
 
-[CI run 38785317728](https://github.com/bestkakkoii/windows_agent_cleanup/actions/runs/38785317728)
-passed at documentation revision `64e8fffe3f7716211cc7a1d7c1fd55bf16f84e2f`
+[CI run 38795510597](https://github.com/bestkakkoii/windows_agent_cleanup/actions/runs/38795510597)
+passed at source revision `f6c4bcbd59fc5c2821109d81983b998129e41834`
 on hosted Windows Server 2025 with MSVC
 19.51.36260.0 and SDK 10.0.26100.0: 11 safe and 4 isolated suites, plus source
-packaging and archive verification. That is native engineering evidence for the
+and runtime test packaging and archive verification. That is native engineering evidence for the
 runner, not a Windows 11 device-matrix pass or proof that the owner binaries came
 from CI. The three Agent CLI omissions and unknown-media overwrite omissions
 above remain untested even though the suites passed.
+
+The retained JUnit and build result were downloaded and reviewed for that run.
+New native cases passed for effective readiness, v1/v2 terminal report binding,
+advisory scan statistics, the 2-file/3-directory/27-byte Quick fixture, duplicate
+request ambiguity, private report ownership, live-writer coexistence, incomplete
+records, hard links/reparses and read-only refusal. The separate Agent CLI summary
+still lists its three `not_run` scenarios, and the backend records the two
+unknown-media overwrite omissions. No desktop GUI or hardware-matrix execution
+is inferred. The unpublished runtime test ZIP SHA-256 is
+`94aef6b0e3e52f724af089c7dff097034d848723f1433c11571074f237b03d89`;
+its artifact ID and source archive identity are in the project metadata.
 
 ### Owner-reported CLI Quick pilot
 

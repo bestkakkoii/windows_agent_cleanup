@@ -57,7 +57,7 @@
     "archive": "Source packaging produces an exact-commit, single-root Source ZIP with manifest/SHA256. Published v2.0.0 runtime ZIP instead contains owner GUI/CLI binaries, instructions, complete Skill, operational schemas and licenses; source/build/test files remain in Git",
     "acceptance": "Normal RC/Release gates require scoped owner evidence and review; incomplete hardware/platform coverage prevents a later full Release. Published v2.0.0 uses only the explicit first-distribution exception in docs/publication.md",
     "current_publication": "Published Latest v2.0.0 at source reference 2b552ba92c9e81cb1ef4b8101619993677b5548a; owner EXEs unchanged, still reporting 2.0.0-dev.1; no independently attested source-to-owner-binary binding",
-    "validation_scope": "Owner GUI quick/overwrite smoke and a scoped 2,890-file CLI Quick pilot reported successful; native CI 38785317728 passed 11 safe suites, four isolated suites and source packaging on hosted Server 2025. Broader CLI acceptance and full hardware matrix remain pending; see spec/project.json and docs/windows_test_plan.md"
+    "validation_scope": "Owner GUI quick/overwrite smoke and scoped 2,890-file published CLI Quick pilot reported successful; native CI 38795510597 at f6c4bcbd59fc5c2821109d81983b998129e41834 passed 11 safe suites, four isolated suites and source/runtime test packaging on hosted Server 2025. New v2 CLI cases passed; broader owner acceptance, desktop GUI and full hardware matrix pending; see spec/project.json and docs/windows_test_plan.md"
   },
   "version_kind": "application_reported_version; distinct from published distribution tag"
 }

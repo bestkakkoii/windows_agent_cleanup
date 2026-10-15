@@ -45,12 +45,39 @@
     "required_test_gates": "57 approved base decisions and risk-specific tests",
     "missing_platform_evidence": "No later full Release without scoped owner evidence review; first-public v2.0.0 exception is recorded under publication.first_public_distribution",
     "verified_native_ci": {
-      "source_commit": "64e8fffe3f7716211cc7a1d7c1fd55bf16f84e2f",
-      "run_id": 38785317728,
-      "url": "https://github.com/bestkakkoii/windows_agent_cleanup/actions/runs/38785317728",
+      "source_commit": "f6c4bcbd59fc5c2821109d81983b998129e41834",
+      "run_id": 38795510597,
+      "url": "https://github.com/bestkakkoii/windows_agent_cleanup/actions/runs/38795510597",
       "status": "passed",
-      "scope": "Hosted Windows native build/manifests, 11 safe suites, 4 isolated suites and source packaging; does not execute or attest the owner-supplied Release EXEs, desktop GUI or full physical-storage matrix",
-      "coverage_gaps": "See docs/windows_test_plan.md; per-case not_run evidence remains distinct from passing suites"
+      "scope": "Hosted Windows build/manifests, 11 safe suites, 4 isolated suites including native v1/v2 CLI readiness/statistics/read-only status, source and runtime test packaging; not owner acceptance, desktop GUI execution or full physical-storage matrix",
+      "coverage_gaps": "See docs/windows_test_plan.md; per-case not_run evidence remains distinct from passing suites",
+      "toolchain": {
+        "compiler": "MSVC 19.51.36260.0",
+        "sdk": "10.0.26100.0",
+        "cmake": "4.5.20261015-g6cf4bb4",
+        "ninja": "1.14.0.git"
+      },
+      "runtime_test_archive": {
+        "artifact_id": 12001289009,
+        "name": "windows_agent_cleanup_test_runtime_f6c4bcbd59fc.zip",
+        "sha256": "94aef6b0e3e52f724af089c7dff097034d848723f1433c11571074f237b03d89",
+        "publication_allowed": false
+      },
+      "source_test_archive": {
+        "artifact_id": 12001443660,
+        "name": "windows_agent_cleanup_test_source_2.0.0_dev1_f6c4bcbd59fc.zip",
+        "sha256": "1573d2f23d93b5f235e6aa28968b28f9784a68be0aced0c822660209b8fd099f",
+        "publication_allowed": false
+      },
+      "native_evidence_artifact_id": 12002451623,
+      "remaining_cases": [
+        "deterministic_console_cancellation",
+        "successful_force_termination",
+        "overwrite_media_validation",
+        "unrelated_same_directory_overwrite_allowed: storage_media_unknown",
+        "supported_storage_overwrite_cases: storage_media_unknown",
+        "desktop GUI, full Windows/filesystem/device matrix and owner acceptance"
+      ]
     },
     "owner_reported_cli_quick_pilot": {
       "status": "scoped_pass_broader_acceptance_pending",
@@ -159,7 +186,7 @@
   },
   "production_agent_source_changes": {
     "authority": "Owner-supplied production Agent change specification and Release-first adoption amendment, 2026-10-16 Asia/Taipei",
-    "status": "implemented_pending_exact_revision_native_evidence_review",
+    "status": "implemented_hosted_windows_checks_passed_owner_acceptance_pending",
     "operation_kernel": "skills/project-cleanup/SKILL.md; <=50 body lines; conditional references; reuse known scope/plan/authority",
     "readiness": "Opt-in v2 shared nonmutating effective-token/Windows/architecture observation; unknown values retain diagnostics",
     "quick_statistics": "Shared checked unique namespace counts and default-stream snapshot lengths, explicit unknown counts, final failure categories and monotonic phases",
