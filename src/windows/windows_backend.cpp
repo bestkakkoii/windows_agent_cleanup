@@ -9,6 +9,7 @@
 #include <winsvc.h>
 #include <psapi.h>
 #include <pdh.h>
+#include <pdhmsg.h>
 // INTEROP: import std cannot export macros; offsetof validates the SDK trailing array layout.
 #include <stddef.h>
 

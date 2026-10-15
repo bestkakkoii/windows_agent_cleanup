@@ -37,7 +37,7 @@ external_includes = {
     },
     "src/windows/backend_locks.cpp": {"windows.h", "restartmanager.h", "winsvc.h"},
     "src/windows/windows_backend.cpp": {
-        "windows.h", "aclapi.h", "bcrypt.h", "sfc.h", "winioctl.h", "winsvc.h", "stddef.h", "psapi.h", "pdh.h",
+        "windows.h", "aclapi.h", "bcrypt.h", "sfc.h", "winioctl.h", "winsvc.h", "stddef.h", "psapi.h", "pdh.h", "pdhmsg.h",
     },
     "src/windows/state_store.cpp": {
         "windows.h", "aclapi.h", "bcrypt.h", "dpapi.h", "sddl.h", "shlobj.h",
