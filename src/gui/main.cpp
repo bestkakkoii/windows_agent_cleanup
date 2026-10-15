@@ -1275,9 +1275,31 @@ namespace
                 }
             }
         }
-        if (view.report && !view.busy && view.report->status != "completed")
+        const auto failure = frontend::diagnostic_failure(view);
+        if (!failure.code.empty())
         {
-            ImGui::TextColored(ImVec4(1.0F, 0.72F, 0.25F, 1.0F), "Incomplete targets or finalization errors remain. Details are retained below.");
+            ImGui::TextColored(ImVec4(1.0F, 0.55F, 0.35F, 1.0F), "%s | native %u",
+                failure.code.c_str(), failure.native_code);
+            if (frontend::diagnostic_failure_kind(failure.code, failure.native_code) == "safety_refusal")
+            {
+                if (failure.code == "running_image" || failure.code == "running_image_ancestor" ||
+                    failure.code == "quick_running_image" || failure.code == "quick_running_image_ancestor")
+                {
+                    ImGui::TextWrapped("The running program and any selected directory containing it are protected. Run the tool from a separate directory before cleaning this location.");
+                }
+                else
+                {
+                    ImGui::TextWrapped("Safety policy refused a protected resource. Review the selected target and the copied diagnostic code.");
+                }
+            }
+        }
+        if (!failure.code.empty() || (view.report && !view.busy && view.report->status != "completed"))
+        {
+            if (ImGui::Button("Copy failure diagnostics JSON"))
+            {
+                const auto diagnostics = state.app.diagnostics(state.report_page);
+                ImGui::SetClipboardText(diagnostics.c_str());
+            }
         }
     }
 
@@ -1295,17 +1317,18 @@ namespace
                 static_cast<unsigned long long>(device.total_bytes), device.bytes_per_second / 1048576.0,
                 device.eta_seconds);
         }
+        if (ImGui::Button("Copy diagnostics JSON"))
+        {
+            const auto diagnostics = state.app.diagnostics(state.report_page);
+            ImGui::SetClipboardText(diagnostics.c_str());
+        }
+        ImGui::TextDisabled("Masked summary: at most 128 outcomes and 64 recent events; paging and retained-log location are included.");
         if (view.report)
         {
             ImGui::Text("Job: %s | %s", view.report->job_id.c_str(), view.report->status.c_str());
-            if (ImGui::Button(view.quick_paged ? "Copy summary JSON" : "Copy JSON report"))
-            {
-                const auto report = frontend::report_json(*view.report);
-                ImGui::SetClipboardText(report.c_str());
-            }
             if (view.quick_paged)
             {
-                ImGui::TextDisabled("The summary is separate from the streamed per-target report.");
+                ImGui::TextDisabled("Full quick outcomes are paged in this live session. Retained logs contain failures and lifecycle counts.");
             }
             else
             {
@@ -1700,7 +1723,7 @@ namespace
             render_diagnostics(state, view);
             ImGui::TreePop();
         }
-        ImGui::TextDisabled("%s | Source RC candidate", secure_erase::metadata::version());
+        ImGui::TextDisabled("%s | Unpublished development build", secure_erase::metadata::version());
     }
 
     void render(application_state& state, const frontend::view_state& view)
@@ -1715,10 +1738,6 @@ namespace
         if (state.exit_requested)
         {
             ImGui::TextColored(ImVec4(1.0F, 0.75F, 0.25F, 1.0F), "Stopping safely before closing...");
-        }
-        if (!view.error_code.empty())
-        {
-            ImGui::TextColored(ImVec4(1.0F, 0.4F, 0.4F, 1.0F), "An operation failed. Open details for the reason.");
         }
         if (!state.ui_error.empty())
         {

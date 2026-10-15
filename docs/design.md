@@ -23,6 +23,13 @@ Native scratch files have explicit private ACLs, no reparse traversal, exclusive
 
 Execution revalidates the selected object's identity and necessary safety state. New or replacement targets are excluded. Different selected hardlink names are separate namespace operations. Reparse boundaries and fail-closed system protection remain active. Reports, temporary plans and execution state live outside the target scope.
 
+Self-protection covers the running executable, loaded module files and their
+identities, and selected directories containing those live resources. It does
+not make unrelated siblings of the executable immutable. Windows, service,
+boot, recovery and private state protection retain their own tree boundaries.
+Safety-policy refusals are distinct from filesystem access errors even when
+both carry Win32 `ERROR_ACCESS_DENIED`.
+
 Quick mode performs logical deletion without payload overwrites or readback. Initial failures are deferred so successful first-pass work can progress; lock recovery and limited retries operate only on the frozen set. CLI process interaction is noninteractive; GUI force actions require their separate approval. Directory work follows child dependencies and releases its own handle leases before parent removal.
 
 Device-aware scheduling groups volumes sharing physical storage and conservatively groups unknown topology. Hardware descriptions set initial hints; throughput and latency feedback determine useful concurrency. Additional concurrency must earn repeated throughput gains, with regression rollback and cooldown. Ready directories can finish when their own children settle, without waiting for unrelated subtrees. CPU and storage observations are optimization hints; unknown identity/protection evidence still refuses mutation. Capacity counters are affected by other processes, handles, links and storage layers, not attributable proof of bytes reclaimed by a job.
@@ -32,6 +39,12 @@ Device-aware scheduling groups volumes sharing physical storage and conservative
 [README_AI.md](../README_AI.md) routes universal entry and engineering tasks. The shared [project-cleanup Skill](../skills/project-cleanup/SKILL.md) owns cleanup plans and disposable-item policy; its bundled references supply protocol details only when needed. The Agent establishes evidence and authorization; the native tool enforces filesystem execution rules. Parallel discovery is read-only, and a coordinator submits one frozen batch.
 
 Long-running work may be partially complete when interrupted. Unknown completion requires reconciling the same job evidence; it must not trigger an automatic fresh scan. Native platform and hardware validation determine release eligibility. Measured end-to-end comparisons replace claims of a universal maximum speed.
+
+GUI diagnostic copies are bounded snapshots of the current operation, including
+counts, errors, masked event evidence and available outcome-page context. A
+compact Quick report has no resident full-target vector; its empty vector is
+not evidence that the job had no targets. Diagnostic output declares sampling
+and pagination instead of presenting an incomplete legacy report as complete.
 
 RC and Release publication additionally require owner-returned Windows build/test evidence and review for the exact revision. CI test artifacts remain unpublished development sources; see [publication policy](publication.md).
 

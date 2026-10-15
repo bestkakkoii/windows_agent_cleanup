@@ -142,10 +142,220 @@ namespace
         }
         return true;
     }
+
+    struct module_fixture
+    {
+        HMODULE value{};
+        ~module_fixture()
+        {
+            if (value != nullptr)
+            {
+                FreeLibrary(value);
+            }
+        }
+    };
+
+    std::optional<std::filesystem::path> executable_path()
+    {
+        std::array<wchar_t, 32768> buffer{};
+        const auto length = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+        if (length == 0 || length >= buffer.size())
+        {
+            return {};
+        }
+        return std::filesystem::path(std::wstring_view(buffer.data(), length));
+    }
+
+    bool copied_self_protection_fixture()
+    {
+        namespace quick = secure_erase::quick;
+        const auto executable = executable_path();
+        if (!executable || executable->filename() != L"self_protection_fixture.exe" ||
+            executable->parent_path().filename() != L"runtime_fixture" ||
+            !executable->parent_path().parent_path().filename().wstring().starts_with(L"secure_erase_isolated_"))
+        {
+            return check(false, "copied_runtime_fixture_location_required");
+        }
+        const auto runtime = executable->parent_path();
+        const auto root = runtime.parent_path();
+        const auto state = root / L"state";
+        if (!CreateDirectoryW(state.c_str(), nullptr))
+        {
+            return check(false, "copied_runtime_private_state_created");
+        }
+        std::array<wchar_t, 32768> system{};
+        const auto system_length = GetSystemDirectoryW(system.data(), static_cast<UINT>(system.size()));
+        const auto dependency = runtime / L"runtime_dependency.dll";
+        if (system_length == 0 || system_length >= system.size() ||
+            !CopyFileW((std::filesystem::path(system.data()) / L"version.dll").c_str(), dependency.c_str(), TRUE))
+        {
+            return check(false, "copied_runtime_dependency_created");
+        }
+        module_fixture loaded{LoadLibraryExW(dependency.c_str(), nullptr,
+            LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32)};
+        if (loaded.value == nullptr)
+        {
+            return check(false, "copied_runtime_dependency_loaded");
+        }
+        const auto executable_alias = runtime / L"executable_alias.bin";
+        const auto dependency_alias = runtime / L"dependency_alias.bin";
+        const bool executable_linked = CreateHardLinkW(executable_alias.c_str(), executable->c_str(), nullptr) != FALSE;
+        const bool dependency_linked = CreateHardLinkW(dependency_alias.c_str(), dependency.c_str(), nullptr) != FALSE;
+        auto made = make_windows_quick_backend(state.wstring());
+        if (!made)
+        {
+            return check(false, "copied_runtime_quick_backend_created");
+        }
+        auto& backend = **made;
+        control controls;
+        bool passed = true;
+        const auto denied = [&](const std::filesystem::path& path, std::string_view code)
+        {
+            auto targets = backend.prepare({path_text(path)}, controls);
+            return targets && targets->size() == 1 && targets->front().preparation_error.code == code;
+        };
+        passed &= check(denied(*executable, "quick_running_image"), "running_executable_name_protected");
+        passed &= check(denied(dependency, "quick_running_image"), "loaded_dependency_name_protected");
+        passed &= check(denied(runtime, "quick_running_image_ancestor"), "running_executable_parent_protected");
+        passed &= check(denied(root, "quick_running_image_ancestor"), "running_executable_ancestor_protected");
+        passed &= check(denied(state, "quick_protected_resource_tree"), "state_tree_protection_unchanged");
+        if (executable_linked && dependency_linked)
+        {
+            passed &= check(denied(executable_alias, "quick_running_image") &&
+                denied(dependency_alias, "quick_running_image"), "running_image_hardlink_identities_protected");
+        }
+        else
+        {
+            std::puts("{\"test\":\"running_image_hardlink_identities_protected\",\"status\":\"not_run\",\"reason\":\"filesystem_has_no_hardlinks\"}");
+        }
+        const auto sibling = runtime / L"CMakeCache.fixture";
+        const auto directory = runtime / L"CMakeFiles.fixture";
+        passed &= check(create_fixture(sibling) && CreateDirectoryW(directory.c_str(), nullptr) &&
+            create_fixture(directory / L"generated.fixture"), "unrelated_same_directory_siblings_created");
+        auto prepared = backend.prepare({path_text(sibling), path_text(directory)}, controls);
+        const bool admitted = prepared && prepared->size() == 3 &&
+            std::ranges::all_of(*prepared, [](const auto& target)
+            {
+                return target.preparation_error.code.empty();
+            });
+        passed &= check(admitted, "unrelated_same_directory_file_and_subtree_admitted");
+        if (admitted)
+        {
+            auto frozen = quick::freeze("0123456789abcdef0123456789abcdef", std::move(*prepared));
+            auto removed = frozen ? quick::run(*frozen, frozen->fingerprint, true, backend, controls, {1, true}) :
+                result<run_report>(std::unexpected(frozen.error()));
+            passed &= check(removed && removed->status == "completed" &&
+                GetFileAttributesW(sibling.c_str()) == INVALID_FILE_ATTRIBUTES &&
+                GetFileAttributesW(directory.c_str()) == INVALID_FILE_ATTRIBUTES &&
+                GetFileAttributesW(executable->c_str()) != INVALID_FILE_ATTRIBUTES &&
+                GetFileAttributesW(dependency.c_str()) != INVALID_FILE_ATTRIBUTES,
+                "unrelated_same_directory_quick_delete_preserves_running_images");
+        }
+        const auto late_dependency = runtime / L"late_dependency.dll";
+        passed &= check(CopyFileW((std::filesystem::path(system.data()) / L"version.dll").c_str(),
+            late_dependency.c_str(), TRUE) != FALSE, "late_runtime_dependency_created");
+        auto late_targets = backend.prepare({path_text(late_dependency)}, controls);
+        const bool late_admitted = late_targets && late_targets->size() == 1 &&
+            late_targets->front().preparation_error.code.empty();
+        passed &= check(late_admitted, "unloaded_same_directory_dependency_admitted");
+        module_fixture late_loaded{LoadLibraryExW(late_dependency.c_str(), nullptr,
+            LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32)};
+        passed &= check(late_loaded.value != nullptr, "dependency_loaded_after_preview");
+        if (late_admitted && late_loaded.value != nullptr)
+        {
+            auto frozen = quick::freeze("1123456789abcdef0123456789abcdef", std::move(*late_targets));
+            auto refused = frozen ? quick::run(*frozen, frozen->fingerprint, true, backend, controls, {1, true}) :
+                result<run_report>(std::unexpected(frozen.error()));
+            passed &= check(refused && refused->status == "partial_failure" && refused->targets.size() == 1 &&
+                !refused->targets.front().deleted && GetFileAttributesW(late_dependency.c_str()) != INVALID_FILE_ATTRIBUTES,
+                "execution_refresh_protects_dependency_loaded_after_preview");
+        }
+        const auto overwrite = runtime / L"overwrite_sibling.fixture";
+        passed &= check(create_fixture(overwrite), "unrelated_same_directory_overwrite_fixture_created");
+        auto platform = make_windows_platform(state.wstring());
+        if (!platform)
+        {
+            return check(false, "copied_runtime_overwrite_backend_created");
+        }
+        auto overwrite_plan = (*platform)->preview({path_text(overwrite)});
+        if (!overwrite_plan && (overwrite_plan.error().code == "storage_media_unknown" ||
+            overwrite_plan.error().code == "storage_bus_unknown_or_virtual" ||
+            overwrite_plan.error().code == "physical_disk_topology_unknown" ||
+            overwrite_plan.error().code == "multi_disk_volume_unsupported"))
+        {
+            // CONTRACT: Quick protection regression runs even when this host's
+            // storage cannot supply a successful overwrite hardware assertion.
+            std::printf("{\"test\":\"unrelated_same_directory_overwrite_allowed\",\"status\":\"not_run\",\"reason\":\"%s\"}\n",
+                overwrite_plan.error().code.c_str());
+        }
+        else
+        {
+            if (overwrite_plan && overwrite_plan->size() == 1 &&
+                overwrite_plan->front().support == capability::delete_only)
+            {
+                std::puts("{\"test\":\"unrelated_same_directory_overwrite_allowed\",\"status\":\"not_run\",\"reason\":\"ordinary_overwrite_fixture_not_supported\"}");
+            }
+            else
+            {
+                passed &= check(overwrite_plan && overwrite_plan->size() == 1 &&
+                    overwrite_plan->front().support != capability::blocked &&
+                    overwrite_fixture(**platform, overwrite_plan->front(), true),
+                    "unrelated_same_directory_overwrite_allowed");
+            }
+            auto protected_plan = (*platform)->preview({path_text(*executable)});
+            passed &= check(protected_plan && protected_plan->size() == 1 &&
+                protected_plan->front().support == capability::blocked &&
+                std::ranges::find(protected_plan->front().protection_reasons, "running_image") !=
+                    protected_plan->front().protection_reasons.end(), "overwrite_running_image_protected");
+        }
+        return passed;
+    }
+
+    bool launch_copied_self_protection_fixture(const fixture_tree& tree)
+    {
+        const auto source = executable_path();
+        const auto runtime = tree.root / L"runtime_fixture";
+        const auto copied = runtime / L"self_protection_fixture.exe";
+        if (!source || !CreateDirectoryW(runtime.c_str(), nullptr) ||
+            !CopyFileW(source->c_str(), copied.c_str(), TRUE))
+        {
+            return check(false, "self_protection_child_created");
+        }
+        std::wstring command = L"\"" + copied.wstring() + L"\" --run-copied-self-protection-fixture";
+        STARTUPINFOW startup{};
+        startup.cb = sizeof(startup);
+        startup.dwFlags = STARTF_USESTDHANDLES;
+        startup.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+        startup.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
+        startup.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+        PROCESS_INFORMATION child{};
+        if (!CreateProcessW(copied.c_str(), command.data(), nullptr, nullptr, TRUE, 0, nullptr,
+            runtime.c_str(), &startup, &child))
+        {
+            return check(false, "self_protection_child_started");
+        }
+        CloseHandle(child.hThread);
+        const auto waited = WaitForSingleObject(child.hProcess, 120000);
+        DWORD exit_code{};
+        const bool completed = waited == WAIT_OBJECT_0 && GetExitCodeProcess(child.hProcess, &exit_code);
+        if (!completed)
+        {
+            // TEST HARNESS: Only the disposable child created above is stopped.
+            // No product process-recovery API or external process is involved.
+            TerminateProcess(child.hProcess, 1);
+            WaitForSingleObject(child.hProcess, 10000);
+        }
+        CloseHandle(child.hProcess);
+        return check(completed && exit_code == 0, "copied_runtime_self_protection_regression");
+    }
 }
 
 int main(int count, char** arguments)
 {
+    if (count == 2 && std::string_view(arguments[1]) == "--run-copied-self-protection-fixture")
+    {
+        return copied_self_protection_fixture() ? 0 : 1;
+    }
     if (count != 2 || std::string_view(arguments[1]) != "--run-isolated-fixtures")
     {
         std::puts("{\"status\":\"not_run\",\"reason\":\"explicit_isolated_fixture_opt_in_required\"}");
@@ -173,7 +383,7 @@ int main(int count, char** arguments)
         return 77;
     }
     auto& backend = **factory;
-    bool passed = true;
+    bool passed = launch_copied_self_protection_fixture(tree);
     const auto basic = tree.root / L"plain unicode_臺灣.bin";
     if (!create_fixture(basic))
     {
@@ -197,14 +407,15 @@ int main(int count, char** arguments)
         }
         std::printf("{\"status\":\"not_run\",\"reason\":\"%s\",\"native_code\":%u}\n",
             initial.error().code.c_str(), initial.error().native_code);
-        // Unsupported/virtual topology is not successful platform coverage.
-        return 77;
+        // Unsupported topology is not successful overwrite coverage, but cannot
+        // hide a failed copied-runtime protection regression already executed.
+        return passed ? 77 : 1;
     }
     if (initial->size() != 1 || initial->front().support == capability::blocked ||
         initial->front().support == capability::delete_only)
     {
         std::puts("{\"status\":\"not_run\",\"reason\":\"ordinary_overwrite_fixture_not_supported\"}");
-        return 77;
+        return passed ? 77 : 1;
     }
     passed &= check(overwrite_fixture(backend, initial->front(), true) &&
         GetFileAttributesW(basic.c_str()) == INVALID_FILE_ATTRIBUTES, "plain_write_flush_full_read_remove");

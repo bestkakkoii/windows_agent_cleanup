@@ -211,6 +211,36 @@ function read_junit_evidence([string]$path)
     return [PSCustomObject]@{status=$status;cases=$cases.Count;skipped=$skipped.Count;failures=$failed.Count;coverage_gaps=$coverage_gaps.ToArray()}
 }
 
+function invoke_validation_suites([string]$selected_mode, [bool]$destructive_enabled,
+    [bool]$is_elevated, [string]$test_tool, [string]$build_directory)
+{
+    # CONTRACT: Building never launches tests or requires an elevated token.
+    # Test registration/compilation does not authorize execution in build mode.
+    if ($selected_mode -eq 'build')
+    {
+        return [PSCustomObject]@{
+            safe=[PSCustomObject]@{status='not_run';reason='build_only_mode';cases=0;skipped=0;failures=0;coverage_gaps=@()};
+            isolated=[PSCustomObject]@{status='not_run';reason='build_only_mode';cases=0;skipped=0;failures=0;coverage_gaps=@()}}
+    }
+    if ($selected_mode -ne 'validate')
+    {
+        throw 'validation.mode_invalid'
+    }
+    if (-not $is_elevated)
+    {
+        throw 'validation.administrator_required: compilation and embedded manifest checks passed; tests were not started; rerun validate_windows.bat from an administrator terminal, retaining the same optional fixture switch; no automatic elevation is performed'
+    }
+    invoke_logged 'safe_tests' $test_tool @('--test-dir',$build_directory,'-C','Release','--output-on-failure','--test-output-size-passed','1048576','--test-output-size-failed','1048576','--no-tests=error','-LE','destructive','--output-junit',(Join-Path $log_directory 'safe_tests.xml'))
+    $safe = read_junit_evidence (Join-Path $log_directory 'safe_tests.xml')
+    $isolated = [PSCustomObject]@{status='not_run';reason='destructive_tests_not_enabled';cases=0;skipped=0;failures=0;coverage_gaps=@()}
+    if ($destructive_enabled)
+    {
+        invoke_logged 'isolated_destructive_tests' $test_tool @('--test-dir',$build_directory,'-C','Release','--output-on-failure','--test-output-size-passed','1048576','--test-output-size-failed','1048576','--no-tests=error','-L','destructive','--output-junit',(Join-Path $log_directory 'isolated_destructive_tests.xml'))
+        $isolated = read_junit_evidence (Join-Path $log_directory 'isolated_destructive_tests.xml')
+    }
+    return [PSCustomObject]@{safe=$safe;isolated=$isolated}
+}
+
 function read_embedded_manifest([string]$path, [string]$expected_level = 'requireAdministrator')
 {
     if ($expected_level -notin @('asInvoker', 'requireAdministrator'))
@@ -791,6 +821,9 @@ function ensure_locked_tools([string]$bootstrap_cmake, [string]$bootstrap_ninja,
 }
 
 $exit_code = 1
+$compilation_status = 'not_completed'
+$embedded_manifest_status = 'not_completed'
+$manifest_evidence = @()
 Push-Location -LiteralPath $source_root
 try
 {
@@ -859,6 +892,7 @@ try
     # exactly matches this invocation, not a previous user's cached selection.
     invoke_logged 'configure' $cmake @('--preset','windows-release',('-DCMAKE_MAKE_PROGRAM=' + $ninja),('-DCMAKE_CXX_COMPILER=' + $compiler),('-DCMAKE_SYSTEM_VERSION=' + $sdk.version),('-Dsecure_erase_enable_destructive_tests=' + $destructive_setting))
     invoke_logged 'compile' $cmake @('--build','--preset','windows-release','--parallel',$parallel_jobs.ToString())
+    $compilation_status = 'passed'
     $symbol_files = @(Get-ChildItem -LiteralPath $build_directory -Filter '*.pdb' -Recurse -File)
     if ($symbol_files.Count -gt 0)
     {
@@ -871,7 +905,6 @@ try
     {
         $manifest_targets += @('secure_erase_windows_backend_tests', 'secure_erase_state_store_windows_tests', 'secure_erase_quick_delete_windows_tests')
     }
-    $manifest_evidence = @()
     foreach ($target in $manifest_targets)
     {
         $binary_path = Join-Path $build_directory ($target + '.exe')
@@ -895,30 +928,27 @@ try
             throw
         }
     }
-    $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
-    if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))
+    $embedded_manifest_status = 'passed'
+    $validation_is_elevated = $false
+    if ($mode -eq 'validate')
     {
-        throw 'validation.administrator_required: binaries carry requireAdministrator; rerun this BAT as administrator'
+        $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+        $validation_is_elevated = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     }
-    invoke_logged 'safe_tests' $ctest @('--test-dir',$build_directory,'-C','Release','--output-on-failure','--test-output-size-passed','1048576','--test-output-size-failed','1048576','--no-tests=error','-LE','destructive','--output-junit',(Join-Path $log_directory 'safe_tests.xml'))
-    $safe_evidence = read_junit_evidence (Join-Path $log_directory 'safe_tests.xml')
-    $isolated_evidence = [PSCustomObject]@{status='not_run';cases=0;skipped=0;failures=0;coverage_gaps=@()}
-    if ($enable_isolated_destructive_tests)
-    {
-        invoke_logged 'isolated_destructive_tests' $ctest @('--test-dir',$build_directory,'-C','Release','--output-on-failure','--test-output-size-passed','1048576','--test-output-size-failed','1048576','--no-tests=error','-L','destructive','--output-junit',(Join-Path $log_directory 'isolated_destructive_tests.xml'))
-        $isolated_evidence = read_junit_evidence (Join-Path $log_directory 'isolated_destructive_tests.xml')
-    }
+    $validation_evidence = invoke_validation_suites $mode ([bool]$enable_isolated_destructive_tests) $validation_is_elevated $ctest $build_directory
+    $safe_evidence = $validation_evidence.safe
+    $isolated_evidence = $validation_evidence.isolated
     $has_skips = $safe_evidence.skipped -gt 0 -or $isolated_evidence.skipped -gt 0
-    $summary = [ordered]@{schema='secure_erase.windows_build_result.v1';run_id=$run_id;status=$(if ($has_skips) { 'incomplete' } else { 'passed' });compilation='passed';embedded_manifests='passed';manifest_evidence=$manifest_evidence;safe_tests=$safe_evidence.status;safe_evidence=$safe_evidence;isolated_destructive_tests=$isolated_evidence.status;isolated_evidence=$isolated_evidence;hardware_matrix='not_run';physical_sanitization_guaranteed=$false;compiler=$compiler;sdk=$sdk.version;cmake=$cmake_version;ninja=$ninja_version;log_directory=$log_directory}
+    $summary = [ordered]@{schema='secure_erase.windows_build_result.v1';run_id=$run_id;mode=$mode;status=$(if ($has_skips) { 'incomplete' } else { 'passed' });compilation=$compilation_status;embedded_manifests=$embedded_manifest_status;manifest_evidence=$manifest_evidence;safe_tests=$safe_evidence.status;safe_evidence=$safe_evidence;isolated_destructive_tests=$isolated_evidence.status;isolated_evidence=$isolated_evidence;hardware_matrix='not_run';physical_sanitization_guaranteed=$false;compiler=$compiler;sdk=$sdk.version;cmake=$cmake_version;ninja=$ninja_version;log_directory=$log_directory}
     [IO.File]::WriteAllText((Join-Path $log_directory 'result.json'), ($summary | ConvertTo-Json -Depth 8), $utf8)
     $exit_code = if ($has_skips) { 3 } else { 0 }
-    write_event 'build.finished' @{exit_code=$exit_code;required_suite_skips=$has_skips;log_directory=$log_directory;release_eligibility='requires_full_owner_hardware_matrix'}
+    write_event 'build.finished' @{mode=$mode;exit_code=$exit_code;safe_tests=$safe_evidence.status;isolated_destructive_tests=$isolated_evidence.status;required_suite_skips=$has_skips;log_directory=$log_directory;release_eligibility='requires_successful_validation_and_owner_acceptance'}
 }
 catch
 {
     $exit_code = if ($script:last_tool_exit -ne 0) { $script:last_tool_exit } else { 1 }
     write_event 'build.failed' @{exit_code=$exit_code;error=$_.Exception.Message;position=$_.InvocationInfo.PositionMessage;stack=$_.ScriptStackTrace;log_directory=$log_directory}
-    $summary = @{schema='secure_erase.windows_build_result.v1';run_id=$run_id;status='failed';exit_code=$exit_code;error=$_.Exception.Message;hardware_matrix='not_run';log_directory=$log_directory}
+    $summary = @{schema='secure_erase.windows_build_result.v1';run_id=$run_id;mode=$mode;status='failed';exit_code=$exit_code;error=$_.Exception.Message;compilation=$compilation_status;embedded_manifests=$embedded_manifest_status;manifest_evidence=$manifest_evidence;hardware_matrix='not_run';log_directory=$log_directory}
     [IO.File]::WriteAllText((Join-Path $log_directory 'result.json'), ($summary | ConvertTo-Json -Depth 8), $utf8)
 }
 finally

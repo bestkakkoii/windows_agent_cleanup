@@ -236,6 +236,8 @@ namespace secure_erase::frontend
                     return false;
                 }
                 store = std::move(*opened);
+                std::lock_guard lock(mutex);
+                view.audit_store_available = true;
             }
             if (needs_overwrite_host && !host)
             {
@@ -278,6 +280,7 @@ namespace secure_erase::frontend
                 ++page_generation;
                 page_worker.request_stop();
                 view.quick_page_loading = false;
+                view.operation_phase = status;
                 view.status = std::move(status);
                 view.error_code.clear();
                 view.native_code = 0;
@@ -516,6 +519,10 @@ namespace secure_erase::frontend
                 if (view.recent_events.size() == 128)
                 {
                     view.recent_events.erase(view.recent_events.begin());
+                    if (view.recent_events_dropped != (std::numeric_limits<std::uint64_t>::max)())
+                    {
+                        ++view.recent_events_dropped;
+                    }
                 }
                 view.recent_events.push_back(event);
             }
@@ -733,6 +740,12 @@ namespace secure_erase::frontend
                     view.quick_pending = result->unattempted;
                     view.error_code = diagnostics.code.empty() ? report->stopping_error.code : diagnostics.code;
                     view.native_code = diagnostics.code.empty() ? report->stopping_error.native_code : diagnostics.native_code;
+                    if (view.error_code.empty())
+                    {
+                        const auto failure = diagnostic_failure(view);
+                        view.error_code = failure.code;
+                        view.native_code = failure.native_code;
+                    }
                 }
             }, false);
         }
@@ -755,6 +768,10 @@ namespace secure_erase::frontend
             if (view.recent_events.size() == 128)
             {
                 view.recent_events.erase(view.recent_events.begin());
+                if (view.recent_events_dropped != (std::numeric_limits<std::uint64_t>::max)())
+                {
+                    ++view.recent_events_dropped;
+                }
             }
             view.recent_events.push_back(value);
             if (value.code == "target_result_completed")
@@ -829,6 +846,8 @@ namespace secure_erase::frontend
     {
         state_->on_event = std::move(on_event);
         state_->settings = settings;
+        state_->view.log_retention_days = settings.log_retention_days;
+        state_->view.retained_log_files = settings.retained_log_files;
         state_->execution_settings = execution_settings;
     }
 
@@ -836,6 +855,23 @@ namespace secure_erase::frontend
 
     bool application::preview(std::vector<std::string> paths)
     {
+        {
+            std::lock_guard lock(state_->mutex);
+            if (state_->view.busy)
+            {
+                return false;
+            }
+            state_->clear_quick_locked();
+            state_->view.plan.reset();
+            state_->view.report.reset();
+            state_->view.completed_count = 0;
+            state_->view.failed_count = 0;
+            state_->view.input_count = paths.size();
+            state_->view.input_count_known = true;
+            state_->view.diagnostic_job_id.clear();
+            state_->view.recent_events.clear();
+            state_->view.recent_events_dropped = 0;
+        }
         return state_->launch("previewing", [this, paths = std::move(paths)]()
         {
             erase_secrets(state_->resume);
@@ -866,6 +902,10 @@ namespace secure_erase::frontend
                 const auto value = std::to_integer<unsigned int>(byte);
                 job_id.push_back(digits[value >> 4]);
                 job_id.push_back(digits[value & 15]);
+            }
+            {
+                std::lock_guard lock(state_->mutex);
+                state_->view.diagnostic_job_id = job_id;
             }
             auto plan = engine::freeze(std::move(job_id), std::move(*targets));
             if (!plan)
@@ -905,6 +945,11 @@ namespace secure_erase::frontend
             }
             state_->clear_quick_locked();
             state_->view.quick_mode = true;
+            state_->view.input_count = paths.size();
+            state_->view.input_count_known = true;
+            state_->view.diagnostic_job_id.clear();
+            state_->view.recent_events.clear();
+            state_->view.recent_events_dropped = 0;
             state_->view.quick_paged = true;
             state_->view.plan.reset();
             state_->view.report.reset();
@@ -938,6 +983,10 @@ namespace secure_erase::frontend
             {
                 state_->fail(disk.error());
                 return;
+            }
+            {
+                std::lock_guard lock(state_->mutex);
+                state_->view.diagnostic_job_id = *job_id;
             }
             auto staging = quick::store::staging_store::create(*files, *job_id,
                 quick::store::options{memory, *disk / 2});
@@ -1162,6 +1211,24 @@ namespace secure_erase::frontend
 
     bool application::load_job(std::string job_id)
     {
+        {
+            std::lock_guard lock(state_->mutex);
+            if (state_->view.busy)
+            {
+                return false;
+            }
+            state_->clear_quick_locked();
+            state_->view.plan.reset();
+            state_->view.report.reset();
+            state_->view.resume_loaded = false;
+            state_->view.completed_count = 0;
+            state_->view.failed_count = 0;
+            state_->view.input_count = 0;
+            state_->view.input_count_known = false;
+            state_->view.diagnostic_job_id = job_id;
+            state_->view.recent_events.clear();
+            state_->view.recent_events_dropped = 0;
+        }
         return state_->launch("loading_checkpoint", [this, job_id = std::move(job_id)]()
         {
             erase_secrets(state_->resume);
@@ -1230,6 +1297,7 @@ namespace secure_erase::frontend
                 state_->view.report.reset();
                 state_->view.devices.clear();
                 state_->view.recent_events.clear();
+                state_->view.recent_events_dropped = 0;
                 state_->view.completed_count = 0;
                 state_->view.failed_count = 0;
                 std::map<std::string, std::uint64_t> totals;
@@ -1261,6 +1329,8 @@ namespace secure_erase::frontend
                 std::lock_guard lock(state_->mutex);
                 state_->view.report = std::make_shared<const engine::run_report>(std::move(*report));
                 state_->view.status = state_->view.report->status;
+                state_->view.error_code = state_->view.report->stopping_error.code;
+                state_->view.native_code = state_->view.report->stopping_error.native_code;
                 state_->view.completed_count = 0;
                 state_->view.failed_count = 0;
                 for (const auto& outcome : state_->view.report->targets)
@@ -1273,6 +1343,11 @@ namespace secure_erase::frontend
                     else
                     {
                         ++state_->view.failed_count;
+                        if (state_->view.error_code.empty())
+                        {
+                            state_->view.error_code = outcome.code;
+                            state_->view.native_code = outcome.native_code;
+                        }
                     }
                 }
             }
@@ -1429,6 +1504,14 @@ namespace secure_erase::frontend
         result.quick_attempted = view.quick_attempted;
         result.quick_pending = view.quick_pending;
         result.status = view.status;
+        result.operation_phase = view.operation_phase;
+        result.diagnostic_job_id = view.diagnostic_job_id;
+        result.input_count = view.input_count;
+        result.input_count_known = view.input_count_known;
+        result.recent_events_dropped = view.recent_events_dropped;
+        result.audit_store_available = view.audit_store_available;
+        result.log_retention_days = view.log_retention_days;
+        result.retained_log_files = view.retained_log_files;
         result.error_code = view.error_code;
         result.native_code = view.native_code;
         result.plan = view.plan;
@@ -1437,6 +1520,12 @@ namespace secure_erase::frontend
         result.completed_count = view.completed_count;
         result.failed_count = view.failed_count;
         return result;
+    }
+
+    std::string application::diagnostics(std::size_t outcome_offset) const
+    {
+        std::lock_guard lock(state_->mutex);
+        return diagnostic_json(state_->view, outcome_offset);
     }
 
     void application::wait()
@@ -1474,72 +1563,6 @@ namespace secure_erase::frontend
     std::string downgrade_token(const engine::target_snapshot& target)
     {
         return target.identity + "|" + std::string(capability_name(target.support));
-    }
-
-    std::string json_quote(std::string_view value)
-    {
-        constexpr std::string_view hex = "0123456789abcdef";
-        std::string result{"\""};
-        for (const char character : value)
-        {
-            const auto code = static_cast<unsigned char>(character);
-            if (code == '"' || code == '\\')
-            {
-                result.push_back('\\');
-                result.push_back(character);
-            }
-            else if (code < 0x20)
-            {
-                result += "\\u00";
-                result.push_back(hex[code >> 4]);
-                result.push_back(hex[code & 15]);
-            }
-            else
-            {
-                result.push_back(character);
-            }
-        }
-        result.push_back('"');
-        return result;
-    }
-
-    std::string event_json(const engine::event& value)
-    {
-        std::string text = "{\"schema\":\"secure_erase.event.v1\",\"code\":" + json_quote(value.code) +
-            ",\"job_id\":" + json_quote(value.job_id) + ",\"identity\":" + json_quote(value.identity) +
-            ",\"bytes_done\":" + std::to_string(value.bytes_done) +
-            ",\"bytes_total\":" + std::to_string(value.bytes_total) +
-            ",\"native_code\":" + std::to_string(value.native_code);
-        if (value.total_targets != 0 || value.completed_targets != 0 || value.failed_targets != 0)
-        {
-            text += ",\"target_counts\":{\"total\":" + std::to_string(value.total_targets) +
-                ",\"completed\":" + std::to_string(value.completed_targets) +
-                ",\"failed\":" + std::to_string(value.failed_targets) + "}";
-        }
-        return text + "}";
-    }
-
-    std::string report_json(const engine::run_report& value)
-    {
-        std::string text = "{\"schema\":\"secure_erase.report.v1\",\"job_id\":" +
-            json_quote(value.job_id) + ",\"status\":" + json_quote(value.status) +
-            ",\"physical_sanitization_guaranteed\":false,\"targets\":[";
-        bool first = true;
-        for (const auto& target : value.targets)
-        {
-            if (!first)
-            {
-                text.push_back(',');
-            }
-            first = false;
-            text += "{\"identity\":" + json_quote(target.identity) + ",\"code\":" +
-                json_quote(target.code) + ",\"deleted\":" + (target.deleted ? "true" : "false") +
-                ",\"logical_overwrite_verified\":" + (target.logical_overwrite_verified ? "true" : "false") +
-                ",\"written_bytes\":" + std::to_string(target.written_bytes) +
-                ",\"verified_bytes\":" + std::to_string(target.verified_bytes) +
-                ",\"native_code\":" + std::to_string(target.native_code) + "}";
-        }
-        return text + "]}";
     }
 
     engine::result<std::string> utf8(std::wstring_view value)

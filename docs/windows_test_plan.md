@@ -6,7 +6,17 @@ Use only created disposable fixtures in a VM, disposable volume or dedicated tes
 
 ## Build evidence
 
-From a clean source checkout, run `build_release.bat` and `validate_windows.bat`. Build under an ordinary effective token; the CLI uses an as-invoker manifest, while the GUI uses its administrator manifest. Current CLI filesystem commands separately require an already elevated token; capabilities does not. Verify both the explicit `elevation_required` refusal and permitted elevated execution without a CLI UAC request. Opt-in fixtures that need privileges must run with those privileges already available; validation does not grant them.
+From a clean source checkout, run `build_release.bat` under an ordinary effective
+token. Build mode compiles and checks embedded manifests; it does not execute
+tests. Run `validate_windows.bat` from an already elevated terminal to execute
+the native suites. The CLI uses an as-invoker manifest, while the GUI uses its
+administrator manifest. Current CLI filesystem commands separately require an
+already elevated token; capabilities does not. Verify both the explicit
+`elevation_required` refusal and permitted elevated execution without a CLI UAC
+request. Opt-in fixtures that need privileges must run with those privileges
+already available; validation does not grant them. An elevation refusal after
+successful compilation must retain that compilation evidence and mark tests
+not run rather than imply a compiler failure.
 
 Install Visual Studio x64 C++ tools with the vendor standard-library module, a complete Windows SDK 10.0.22000.0+, and a bootstrap CMake 3.15+ (VS-bundled accepted). The script builds exact hash-locked upstream-master CMake 4.5.20261015 and Ninja 1.14.0.git into ignored `build/tools`; installed Ninja is optional because `nmake` can bootstrap it. First build needs network and more compilation time; a valid binary-hash-verified cache supports offline rebuilding without global installation. Preserve all recorded exact identities. Check actual `/std:c++latest`, Release `/O2 /GL /LTCG /MT`, strict diagnostics, no debug instrumentation/PDB, native module ownership and vendor `import std`. A CMake metadata label alone does not prove compiler mode or feature completeness.
 

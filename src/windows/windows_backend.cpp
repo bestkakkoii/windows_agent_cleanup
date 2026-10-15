@@ -279,6 +279,22 @@ namespace
         return std::unexpected(fail("protected_path_depth_limit", ERROR_BUFFER_OVERFLOW));
     }
 
+    constexpr std::wstring_view protected_parent_path(std::wstring_view path)
+    {
+        const auto separator = path.find_last_of(L'\\');
+        if (!path.starts_with(L"\\\\?\\") || separator == path.npos || separator < 6)
+        {
+            return {};
+        }
+        // SECURITY: \\?\D:\ is a directory; \\?\D: is a raw-volume-like name
+        // whose final-name query can fail with ERROR_INVALID_FUNCTION.
+        return path.substr(0, (std::max)(separator, std::size_t{7}));
+    }
+
+    static_assert(protected_parent_path(LR"(\\?\D:\service.exe)") == LR"(\\?\D:\)");
+    static_assert(protected_parent_path(LR"(\\?\D:\runtime\service.exe)") == LR"(\\?\D:\runtime)");
+    static_assert(protected_parent_path(LR"(\\?\D:)").empty());
+
     std::string hex(std::span<const unsigned char> data)
     {
         constexpr std::string_view digits = "0123456789abcdef";
@@ -564,9 +580,160 @@ namespace
         return output;
     }
 
-    result<std::vector<std::wstring>> protection_roots(const std::wstring& state_path)
+    struct runtime_image
     {
-        std::vector<std::wstring> paths{state_path};
+        std::wstring path;
+        std::string identity;
+        // SECURITY: Deny namespace replacement throughout this protection snapshot.
+        std::shared_ptr<const handle> file;
+    };
+
+    struct protection_set
+    {
+        std::vector<std::wstring> trees;
+        std::vector<runtime_image> images;
+    };
+
+    struct runtime_image_cache
+    {
+        std::mutex mutex;
+        std::map<std::wstring, std::weak_ptr<const handle>> pins;
+    };
+
+    result<std::vector<runtime_image>> running_images(runtime_image_cache& cache)
+    {
+        // RESOURCE: One backend's concurrent target snapshots share image pins.
+        // Weak entries cannot prolong handles; pruning bounds cached paths to
+        // loaded modules and former modules still held by active snapshots.
+        const std::scoped_lock inventory_lock(cache.mutex);
+        auto& image_pins = cache.pins;
+        std::erase_if(image_pins, [](const auto& entry)
+        {
+            return entry.second.expired();
+        });
+        std::vector<HMODULE> modules(128);
+        DWORD needed{};
+        bool complete{};
+        for (unsigned attempt = 0; attempt < 4; ++attempt)
+        {
+            if (!K32EnumProcessModulesEx(GetCurrentProcess(), modules.data(),
+                static_cast<DWORD>(modules.size() * sizeof(HMODULE)), &needed, LIST_MODULES_ALL))
+            {
+                return std::unexpected(fail("runtime_module_inventory_failed"));
+            }
+            if (needed == 0 || needed % sizeof(HMODULE) != 0 || needed > maximum_metadata)
+            {
+                return std::unexpected(fail("runtime_module_inventory_size_invalid", ERROR_INVALID_DATA));
+            }
+            if (needed <= modules.size() * sizeof(HMODULE))
+            {
+                modules.resize(needed / sizeof(HMODULE));
+                complete = true;
+                break;
+            }
+            modules.resize(needed / sizeof(HMODULE));
+        }
+        if (!complete)
+        {
+            return std::unexpected(fail("runtime_module_inventory_unstable", ERROR_RETRY));
+        }
+        std::vector<runtime_image> images;
+        images.reserve(modules.size());
+        std::vector<wchar_t> buffer(32768);
+        const auto executable = GetModuleHandleW(nullptr);
+        struct module_reference
+        {
+            HMODULE value{};
+            module_reference() = default;
+            module_reference(const module_reference&) = delete;
+            module_reference& operator=(const module_reference&) = delete;
+            module_reference(module_reference&& other) noexcept : value(std::exchange(other.value, nullptr))
+            {
+            }
+            ~module_reference()
+            {
+                if (value != nullptr)
+                {
+                    FreeLibrary(value);
+                }
+            }
+        };
+        // SECURITY: Retain loader references through the final membership check;
+        // an unload/reload at the same base address cannot substitute an image.
+        std::vector<module_reference> references;
+        references.reserve(modules.size());
+        bool executable_seen{};
+        for (const auto module : modules)
+        {
+            module_reference reference;
+            if (module != executable && (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,
+                reinterpret_cast<LPCWSTR>(module), &reference.value) || reference.value != module))
+            {
+                return std::unexpected(fail("runtime_module_reference_changed", ERROR_RETRY));
+            }
+            executable_seen = executable_seen || module == executable;
+            const DWORD length = GetModuleFileNameW(module, buffer.data(), static_cast<DWORD>(buffer.size()));
+            if (length == 0 || length >= buffer.size())
+            {
+                return std::unexpected(fail("runtime_module_path_unknown"));
+            }
+            auto path = absolute(std::wstring_view(buffer.data(), length));
+            if (!path)
+            {
+                return std::unexpected(path.error());
+            }
+            std::shared_ptr<const handle> file;
+            if (const auto cached = image_pins.find(*path); cached != image_pins.end())
+            {
+                file = cached->second.lock();
+            }
+            if (!file)
+            {
+                handle opened(CreateFileW(path->c_str(), FILE_READ_ATTRIBUTES,
+                    FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
+                if (!opened)
+                {
+                    return std::unexpected(fail("runtime_module_identity_open_failed"));
+                }
+                file = std::make_shared<const handle>(std::move(opened));
+                image_pins[*path] = file;
+            }
+            auto canonical = final_name(file->get());
+            auto identifier = identity(file->get());
+            if (!canonical || !identifier)
+            {
+                return std::unexpected(!canonical ? canonical.error() : identifier.error());
+            }
+            images.push_back({std::move(*canonical), std::move(*identifier), std::move(file)});
+            references.push_back(std::move(reference));
+        }
+        if (executable == nullptr || !executable_seen)
+        {
+            return std::unexpected(fail("own_executable_inventory_missing", ERROR_INVALID_DATA));
+        }
+        // SECURITY: A changing loader inventory is uncertainty, never permission.
+        std::vector<HMODULE> confirmed(modules.size());
+        DWORD confirmed_bytes{};
+        if (!K32EnumProcessModulesEx(GetCurrentProcess(), confirmed.data(),
+            static_cast<DWORD>(confirmed.size() * sizeof(HMODULE)), &confirmed_bytes, LIST_MODULES_ALL) ||
+            confirmed_bytes != needed)
+        {
+            return std::unexpected(fail("runtime_module_inventory_changed", ERROR_RETRY));
+        }
+        std::sort(modules.begin(), modules.end(), std::less<HMODULE>{});
+        std::sort(confirmed.begin(), confirmed.end(), std::less<HMODULE>{});
+        if (modules != confirmed)
+        {
+            return std::unexpected(fail("runtime_module_inventory_changed", ERROR_RETRY));
+        }
+        return images;
+    }
+
+    result<protection_set> protection_roots(const std::wstring& state_path, runtime_image_cache& image_cache)
+    {
+        protection_set protected_resources;
+        auto& paths = protected_resources.trees;
+        paths.push_back(state_path);
         std::vector<wchar_t> buffer(32768);
         const UINT windows_length = GetWindowsDirectoryW(buffer.data(), static_cast<UINT>(buffer.size()));
         if (windows_length == 0 || windows_length >= buffer.size())
@@ -579,23 +746,14 @@ namespace
             return std::unexpected(windows.error());
         }
         paths.push_back(*windows);
-        const DWORD executable_length = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
-        if (executable_length == 0 || executable_length >= buffer.size())
+        // SECURITY: Protect exact loaded images, not unrelated build artifacts or
+        // user files beside the executable. File identities also cover hardlinks.
+        auto images = running_images(image_cache);
+        if (!images)
         {
-            return std::unexpected(fail("own_executable_unknown"));
+            return std::unexpected(images.error());
         }
-        auto executable = absolute(std::wstring_view(buffer.data(), executable_length));
-        if (!executable)
-        {
-            return std::unexpected(executable.error());
-        }
-        auto canonical_executable = canonical_protected_path(*executable);
-        if (!canonical_executable)
-        {
-            return std::unexpected(canonical_executable.error());
-        }
-        // SECURITY: Preserve the running application and all companion binaries/resources.
-        paths.push_back(canonical_executable->substr(0, canonical_executable->find_last_of(L'\\')));
+        protected_resources.images = std::move(*images);
         service_handle manager{OpenSCManagerW(nullptr, nullptr, SC_MANAGER_ENUMERATE_SERVICE)};
         if (manager.value == nullptr)
         {
@@ -692,8 +850,14 @@ namespace
             {
                 return std::unexpected(canonical_binary.error());
             }
-            // SECURITY: Protect service companion DLLs by denying its containing directory.
-            paths.push_back(canonical_binary->substr(0, canonical_binary->find_last_of(L'\\')));
+            // SECURITY: Service companion-tree protection is unchanged. Preserve
+            // the root separator for services installed directly in a drive root.
+            const auto parent = protected_parent_path(*canonical_binary);
+            if (parent.empty())
+            {
+                return std::unexpected(fail("service_parent_path_unresolved", ERROR_INVALID_NAME));
+            }
+            paths.emplace_back(parent);
         }
         for (auto& path : paths)
         {
@@ -704,22 +868,35 @@ namespace
             }
             path = std::move(*canonical);
         }
-        return paths;
+        return protected_resources;
     }
 
     result<std::vector<std::string>> protection(HANDLE file, const std::wstring& path,
-        const std::vector<std::wstring>& roots, DWORD attributes, bool persistent_acl)
+        const protection_set& roots, DWORD attributes, bool persistent_acl, std::string_view identifier)
     {
         std::vector<std::string> reasons;
         if (path.size() <= 7)
         {
             reasons.push_back("volume_root");
         }
-        for (const auto& root : roots)
+        for (const auto& root : roots.trees)
         {
             if (within(path, root))
             {
                 reasons.push_back("protected_resource_tree");
+                break;
+            }
+        }
+        for (const auto& image : roots.images)
+        {
+            if (equal_path(path, image.path) || identifier == image.identity)
+            {
+                reasons.push_back("running_image");
+                break;
+            }
+            if ((attributes & FILE_ATTRIBUTE_DIRECTORY) && within(image.path, path))
+            {
+                reasons.push_back("running_image_ancestor");
                 break;
             }
         }
@@ -782,7 +959,7 @@ namespace
     }
 
     result<target_snapshot> observe(HANDLE file, const std::wstring& path,
-        const volume_facts& volume, const std::vector<std::wstring>& roots)
+        const volume_facts& volume, const protection_set& roots)
     {
         if (GetFileType(file) != FILE_TYPE_DISK)
         {
@@ -813,7 +990,7 @@ namespace
         auto converted = utf8(path);
         auto manifest = streams(file, standard.Directory != FALSE, volume.filesystem);
         auto reasons = protection(file, path, roots, basic.FileAttributes,
-            equal_path(volume.filesystem, L"NTFS") || equal_path(volume.filesystem, L"ReFS"));
+            equal_path(volume.filesystem, L"NTFS") || equal_path(volume.filesystem, L"ReFS"), *identifier);
         if (!converted || !manifest || !reasons)
         {
             return std::unexpected(!converted ? converted.error() : !manifest ? manifest.error() : reasons.error());
@@ -913,7 +1090,7 @@ namespace
     {
     public:
         windows_target(handle control, std::vector<handle> ancestors, std::wstring path,
-            volume_facts volume, std::vector<std::wstring> roots, target_snapshot original)
+            volume_facts volume, protection_set roots, target_snapshot original)
             : control_(std::move(control)), ancestors_(std::move(ancestors)), path_(std::move(path)),
               volume_(std::move(volume)), roots_(std::move(roots)), original_(std::move(original))
         {
@@ -1341,7 +1518,7 @@ namespace
         std::vector<handle> ancestors_;
         std::wstring path_;
         volume_facts volume_;
-        std::vector<std::wstring> roots_;
+        protection_set roots_;
         target_snapshot original_;
         std::map<std::string, handle> data_;
         bool readonly_changed_{};
@@ -1706,7 +1883,7 @@ namespace
             {
                 return std::unexpected(fail("administrator_required", ERROR_ELEVATION_REQUIRED));
             }
-            auto roots = protection_roots(state_path_);
+            auto roots = protection_roots(state_path_, image_cache_);
             if (!roots)
             {
                 return std::unexpected(roots.error());
@@ -1752,7 +1929,7 @@ namespace
             {
                 return std::unexpected(fail("target_execution_denied", ERROR_ACCESS_DENIED));
             }
-            auto roots = protection_roots(state_path_);
+            auto roots = protection_roots(state_path_, image_cache_);
             auto decoded = wide(target.path);
             if (!roots || !decoded)
             {
@@ -1897,7 +2074,7 @@ namespace
             return {};
         }
 
-        result<void> enumerate(const std::wstring& path, const std::vector<std::wstring>& roots,
+        result<void> enumerate(const std::wstring& path, const protection_set& roots,
             std::vector<target_snapshot>& output, std::set<std::wstring>& seen, std::size_t depth)
         {
             if (depth > maximum_depth)
@@ -2017,6 +2194,7 @@ namespace
         }
 
         std::wstring state_path_;
+        runtime_image_cache image_cache_;
         std::optional<scope_binding> scope_;
         std::uint64_t preview_budget_{};
         std::uint64_t preview_used_{};
@@ -2397,7 +2575,7 @@ namespace
     }
 
     result<quick_observation> quick_observe(HANDLE file, const std::wstring& path,
-        const std::vector<std::wstring>& roots, quick_volume_cache& cache, bool canonical_known = false)
+        const protection_set& roots, quick_volume_cache& cache, bool canonical_known = false)
     {
         if (GetFileType(file) != FILE_TYPE_DISK)
         {
@@ -2436,7 +2614,8 @@ namespace
             return std::unexpected(volume.error());
         }
         auto reasons = protection(file, path, roots, value.basic.FileAttributes,
-            ((*volume)->flags & FILE_PERSISTENT_ACLS) != 0);
+            ((*volume)->flags & FILE_PERSISTENT_ACLS) != 0,
+            std::string_view(identifier->first).substr(identifier->second.size() + 1));
         if (!reasons || !reasons->empty())
         {
             return std::unexpected(!reasons ? reasons.error() :
@@ -2504,7 +2683,7 @@ namespace
             {
                 return std::unexpected(fail("administrator_required", ERROR_ELEVATION_REQUIRED));
             }
-            auto roots = protection_roots(state_path_);
+            auto roots = protection_roots(state_path_, image_cache_);
             if (!roots)
             {
                 return std::unexpected(roots.error());
@@ -3590,7 +3769,7 @@ namespace
             {
                 return std::unexpected(fail("critical_quick_thread_token_restore_failed", ERROR_ACCESS_DENIED));
             }
-            if (roots_.empty() || !value.preparation_error.code.empty() || value.identity.empty())
+            if (roots_.trees.empty() || !value.preparation_error.code.empty() || value.identity.empty())
             {
                 return std::unexpected(fail("quick_unbound_or_unprepared_target", ERROR_ACCESS_DENIED));
             }
@@ -3743,8 +3922,9 @@ namespace
         }
 
         std::wstring state_path_;
+        runtime_image_cache image_cache_;
         std::optional<scope_binding> scope_;
-        std::vector<std::wstring> roots_;
+        protection_set roots_;
         std::mutex volumes_mutex_;
         std::set<std::string, std::less<>> known_volumes_;
         quick_volume_cache volume_cache_;

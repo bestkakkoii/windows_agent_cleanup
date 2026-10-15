@@ -63,6 +63,14 @@ export namespace secure_erase::frontend
         std::size_t quick_attempted{};
         std::size_t quick_pending{};
         std::string status{"ready"};
+        std::string operation_phase{"ready"};
+        std::string diagnostic_job_id;
+        std::size_t input_count{};
+        bool input_count_known{};
+        std::uint64_t recent_events_dropped{};
+        bool audit_store_available{};
+        std::uint32_t log_retention_days{30};
+        std::uint32_t retained_log_files{8};
         std::string error_code;
         std::uint32_t native_code{};
         std::shared_ptr<const engine::frozen_plan> plan;
@@ -133,6 +141,10 @@ export namespace secure_erase::frontend
 
         [[nodiscard]] view_state snapshot(bool include_details = true) const;
 
+        // CONTRACT: No filesystem I/O or full target/history collection copies.
+        // Output contains bounded masked diagnostics, never an exhaustive report.
+        [[nodiscard]] std::string diagnostics(std::size_t outcome_offset = 0) const;
+
         void wait();
 
     private:
@@ -151,6 +163,13 @@ export namespace secure_erase::frontend
     [[nodiscard]] std::string event_json(const engine::event& value);
 
     [[nodiscard]] std::string report_json(const engine::run_report& value);
+
+    [[nodiscard]] engine::error diagnostic_failure(const view_state& value);
+
+    [[nodiscard]] std::string_view diagnostic_failure_kind(std::string_view code,
+        std::uint32_t native_code) noexcept;
+
+    [[nodiscard]] std::string diagnostic_json(const view_state& value, std::size_t outcome_offset = 0);
 
     [[nodiscard]] engine::result<std::string> utf8(std::wstring_view value);
 

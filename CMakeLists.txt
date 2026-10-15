@@ -168,7 +168,7 @@ endif()
 if(SECURE_ERASE_PORTABLE_TEST_ONLY)
     # Compile the actual native-facing public modules as an API boundary check.
     # Their WinAPI implementation units are intentionally not part of this target.
-    add_library(secure_erase_native_interfaces STATIC)
+    add_library(secure_erase_native_interfaces STATIC src/app/application_diagnostics.cpp)
     target_sources(secure_erase_native_interfaces PUBLIC FILE_SET public_modules TYPE CXX_MODULES FILES
         src/modules/windows_backend.ixx src/modules/state_store.ixx
         src/modules/retained_copies.ixx src/modules/application.ixx)
@@ -196,7 +196,7 @@ if(NOT SECURE_ERASE_PORTABLE_TEST_ONLY)
         kernel32 advapi32 bcrypt crypt32 rstrtmgr user32 shell32 sfc ole32 vssapi pdh)
     secure_erase_configure_target(secure_erase_windows)
 
-    add_library(secure_erase_application STATIC src/app/application.cpp)
+    add_library(secure_erase_application STATIC src/app/application.cpp src/app/application_diagnostics.cpp)
     target_sources(secure_erase_application PUBLIC FILE_SET public_modules TYPE CXX_MODULES FILES
         src/modules/application.ixx)
     target_link_libraries(secure_erase_application PUBLIC secure_erase_windows)
@@ -262,6 +262,16 @@ if(NOT SECURE_ERASE_PORTABLE_TEST_ONLY)
         set_tests_properties(quick_delete_windows_isolated PROPERTIES LABELS "destructive;windows;quick" TIMEOUT 300 SKIP_RETURN_CODE 77)
     endif()
 endif()
+add_executable(secure_erase_application_diagnostics_tests tests/application_diagnostics_tests.cpp)
+if(SECURE_ERASE_PORTABLE_TEST_ONLY)
+    target_link_libraries(secure_erase_application_diagnostics_tests PRIVATE secure_erase_native_interfaces)
+else()
+    target_link_libraries(secure_erase_application_diagnostics_tests PRIVATE secure_erase_application)
+endif()
+secure_erase_configure_target(secure_erase_application_diagnostics_tests)
+add_test(NAME application_diagnostics_behavior COMMAND secure_erase_application_diagnostics_tests)
+set_tests_properties(application_diagnostics_behavior PROPERTIES LABELS "safe;portable;modules" TIMEOUT 30)
+
 message(STATUS "secure_erase.compiler=${CMAKE_CXX_COMPILER_ID}; version=${CMAKE_CXX_COMPILER_VERSION}")
 message(STATUS "secure_erase.modules=native; std_provider=${CMAKE_CXX_STDLIB_MODULES_JSON}; capability_probe=${secure_erase_import_std_works}; selected_metadata=${secure_erase_cxx_standard}")
 message(STATUS "secure_erase.validation=Windows compilation/runtime evidence remains owner supplied")
