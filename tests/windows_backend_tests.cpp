@@ -60,6 +60,41 @@ namespace
         return passed;
     }
 
+    std::optional<BY_HANDLE_FILE_INFORMATION> read_unchanged_fixture(const std::filesystem::path& path)
+    {
+        HANDLE file = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (file == INVALID_HANDLE_VALUE)
+        {
+            return std::nullopt;
+        }
+        BY_HANDLE_FILE_INFORMATION information{};
+        std::array<std::byte, 8193> content{};
+        DWORD read{};
+        const bool valid = GetFileInformationByHandle(file, &information) &&
+            information.nFileSizeHigh == 0 && information.nFileSizeLow == content.size() &&
+            ReadFile(file, content.data(), static_cast<DWORD>(content.size()), &read, nullptr) &&
+            read == content.size() && std::ranges::all_of(content, [](std::byte value)
+            {
+                return value == std::byte{0x5a};
+            });
+        CloseHandle(file);
+        return valid ? std::optional(information) : std::nullopt;
+    }
+
+    bool same_fixture_metadata(const BY_HANDLE_FILE_INFORMATION& left, const BY_HANDLE_FILE_INFORMATION& right)
+    {
+        return left.dwFileAttributes == right.dwFileAttributes &&
+            left.dwVolumeSerialNumber == right.dwVolumeSerialNumber &&
+            left.nFileIndexHigh == right.nFileIndexHigh && left.nFileIndexLow == right.nFileIndexLow &&
+            left.nNumberOfLinks == right.nNumberOfLinks &&
+            left.nFileSizeHigh == right.nFileSizeHigh && left.nFileSizeLow == right.nFileSizeLow &&
+            left.ftCreationTime.dwHighDateTime == right.ftCreationTime.dwHighDateTime &&
+            left.ftCreationTime.dwLowDateTime == right.ftCreationTime.dwLowDateTime &&
+            left.ftLastWriteTime.dwHighDateTime == right.ftLastWriteTime.dwHighDateTime &&
+            left.ftLastWriteTime.dwLowDateTime == right.ftLastWriteTime.dwLowDateTime;
+    }
+
     bool overwrite_fixture(platform& backend, const target_snapshot& snapshot, bool remove)
     {
         auto held = backend.acquire(snapshot);
@@ -144,9 +179,22 @@ int main(int count, char** arguments)
     {
         return 1;
     }
+    const auto basic_before = read_unchanged_fixture(basic);
     auto initial = backend.preview({path_text(basic)});
     if (!initial)
     {
+        if (initial.error().code == "storage_media_unknown")
+        {
+            const auto basic_after = read_unchanged_fixture(basic);
+            passed &= check(initial.error().native_code == ERROR_NOT_SUPPORTED && basic_before && basic_after &&
+                same_fixture_metadata(*basic_before, *basic_after), "unknown_media_overwrite_refused_without_mutation");
+            // CONTRACT: This host proves refusal only. It supplies no successful
+            // overwrite/ADS/recovery coverage and cannot satisfy that hardware matrix.
+            std::puts("{\"test\":\"supported_storage_overwrite_cases\",\"status\":\"not_run\",\"reason\":\"storage_media_unknown\",\"scope\":\"requires_identifiable_supported_test_device\"}");
+            std::printf("{\"schema\":\"secure_erase.windows_backend_test_scope.v1\",\"scope\":\"unknown_media_refusal_only\",\"refusal_verified\":%s,\"supported_device_overwrite_verified\":false}\n",
+                passed ? "true" : "false");
+            return passed ? 0 : 1;
+        }
         std::printf("{\"status\":\"not_run\",\"reason\":\"%s\",\"native_code\":%u}\n",
             initial.error().code.c_str(), initial.error().native_code);
         // Unsupported/virtual topology is not successful platform coverage.

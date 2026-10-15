@@ -110,6 +110,37 @@ function write_manifest([string]$path, [string[]]$targets)
     [System.IO.File]::WriteAllLines($path, $records, $script:utf8)
 }
 
+function get_canonical_namespace([string]$path)
+{
+    $file = [System.IO.File]::Open($path, [System.IO.FileMode]::Open,
+        [System.IO.FileAccess]::Read, [System.IO.FileShare]'ReadWrite, Delete')
+    try
+    {
+        return [native_cli_fixture.path_probe]::canonical_path($file.SafeFileHandle)
+    }
+    finally
+    {
+        $file.Dispose()
+    }
+}
+
+function bounded_namespace([string]$value)
+{
+    return @{
+        value = $value.Substring(0, [Math]::Min($value.Length, 1024))
+        length = $value.Length
+        truncated = $value.Length -gt 1024
+    }
+}
+
+function select_exact_scan_target([object[]]$records, [string]$expected_namespace)
+{
+    return @($records | Where-Object {
+        $_.schema -eq 'windows_agent_cleanup.scan_target.v1' -and
+        [string]::Equals([string]$_.path, $expected_namespace, [System.StringComparison]::Ordinal)
+    })
+}
+
 function read_report($result, [string]$control_directory)
 {
     $path = [System.IO.Path]::GetFullPath([string]$result.record.report_file)
@@ -149,6 +180,36 @@ try
         emit_event @{ status = 'not_run'; reason = 'already_elevated_token_required'; checks = 0 }
         exit 77
     }
+    Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using System.Text;
+using Microsoft.Win32.SafeHandles;
+
+namespace native_cli_fixture
+{
+    public static class path_probe
+    {
+        [DllImport("kernel32.dll", EntryPoint = "GetFinalPathNameByHandleW",
+            CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern uint final_path(SafeFileHandle file, StringBuilder buffer,
+            uint capacity, uint flags);
+
+        public static string canonical_path(SafeFileHandle file)
+        {
+            var buffer = new StringBuilder(32768);
+            // FILE_NAME_NORMALIZED | VOLUME_NAME_DOS matches the report contract.
+            uint count = final_path(file, buffer, (uint)buffer.Capacity, 0);
+            if (count == 0 || count >= buffer.Capacity)
+            {
+                throw new Win32Exception(count == 0 ? Marshal.GetLastWin32Error() : 122);
+            }
+            return buffer.ToString();
+        }
+    }
+}
+'@
     $capabilities = invoke_cli @('capabilities')
     check ($capabilities.exit_code -eq 0 -and
         $capabilities.record.schema -eq 'windows_agent_cleanup.capabilities.v1' -and
@@ -189,6 +250,7 @@ try
     {
         [System.IO.File]::WriteAllText($path, 'fixture-owned-content', $script:utf8)
     }
+    $single_namespace = get_canonical_namespace $single
     $manifest = Join-Path $control 'targets.jsonl'
     $reports = Join-Path $control 'reports'
     write_manifest $manifest @($single, $selected_directory)
@@ -211,8 +273,19 @@ try
             $scan.record.counts.targets -eq 5 -and $scan.record.counts.failed -eq 0 -and
             [System.IO.File]::Exists($single)) 'scan_freezes_five_without_deletion'
         $scan_records = @(read_report $scan $control)
-        $selected = @($scan_records | Where-Object { $_.schema -eq 'windows_agent_cleanup.scan_target.v1' -and $_.path -eq $single })
-        check ($selected.Count -eq 1 -and $selected[0].target_key -match '^[0-9a-f]{64}$') 'scan_exact_namespace_key'
+        $selected = @(select_exact_scan_target $scan_records $single_namespace)
+        $exact_namespace_key = $selected.Count -eq 1 -and $selected[0].target_key -cmatch '^[0-9a-f]{64}$'
+        if (-not $exact_namespace_key)
+        {
+            $scan_targets = @($scan_records | Where-Object { $_.schema -eq 'windows_agent_cleanup.scan_target.v1' })
+            emit_event @{ event = 'scan_namespace_mismatch'; expected_path = (bounded_namespace $single_namespace);
+                input_path = (bounded_namespace $single); exact_matches = $selected.Count; target_records = $scan_targets.Count;
+                observed = @($scan_targets | Select-Object -First 8 | ForEach-Object {
+                    @{ path = (bounded_namespace ([string]$_.path)); target_key = (bounded_namespace ([string]$_.target_key));
+                        error_code = (bounded_namespace ([string]$_.error_code)); native_code = $_.native_code }
+                }) }
+        }
+        check $exact_namespace_key 'scan_exact_namespace_key'
 
         $again = invoke_cli (@('scan', '--request-id', 'scan_again') + $common)
         check ($again.exit_code -eq 0 -and $again.record.report_file -ne $scan.record.report_file -and

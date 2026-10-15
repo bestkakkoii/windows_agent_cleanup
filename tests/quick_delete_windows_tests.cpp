@@ -76,6 +76,19 @@ namespace
         return {reinterpret_cast<const char*>(text.data()), text.size()};
     }
 
+    std::wstring expanded_fixture_path(const std::filesystem::path& path, bool short_name)
+    {
+        std::array<wchar_t, 32768> buffer{};
+        const DWORD length = short_name ?
+            GetShortPathNameW(path.c_str(), buffer.data(), static_cast<DWORD>(buffer.size())) :
+            GetLongPathNameW(path.c_str(), buffer.data(), static_cast<DWORD>(buffer.size()));
+        if (length == 0 || length >= buffer.size())
+        {
+            return {};
+        }
+        return {buffer.data(), length};
+    }
+
     bool create_file(const std::filesystem::path& path)
     {
         held_file file(CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
@@ -853,7 +866,40 @@ int main(int count, char** arguments)
         auto outside_target = freeze_one(backend, outside);
         check(outside_target && !remove_target(scoped, *outside_target, true) && same_data(outside),
             "scope_acquire_rejects_foreign_frozen_target");
+        const auto missing_outside = tree.root / L"outside_missing" / L"missing.bin";
+        auto missing_outside_batch = scoped.prepare({path_text(scope_file), path_text(missing_outside)}, controls);
+        check(!missing_outside_batch && missing_outside_batch.error().code == "quick_target_outside_scope" &&
+            same_data(scope_file) && !fixture_path_exists(missing_outside),
+            "scope_missing_outside_request_rejects_entire_batch");
+        const auto missing_inside = scope_root / L"missing_inside.bin";
+        auto missing_inside_batch = scoped.prepare({path_text(scope_file), path_text(missing_inside)}, controls);
+        check(missing_inside_batch && missing_inside_batch->size() == 2 &&
+            std::ranges::count_if(*missing_inside_batch, [](const auto& value)
+            {
+                return !value.preparation_error.code.empty();
+            }) == 1 && same_data(scope_file) && !fixture_path_exists(missing_inside),
+            "scope_missing_inside_target_remains_per_target_failure");
         auto scoped_target = freeze_one(scoped, scope_file);
+        check(scoped_target && same_data(scope_file), "scope_selected_namespace_frozen_before_replacement");
+        const auto scope_long_path = expanded_fixture_path(scope_file, false);
+        auto long_scope_target = scope_long_path.empty() ? std::optional<secure_erase::quick::target>{} :
+            freeze_one(scoped, std::filesystem::path(scope_long_path));
+        check(scoped_target && long_scope_target && long_scope_target->path == scoped_target->path &&
+            long_scope_target->identity == scoped_target->identity && same_data(scope_file),
+            "scope_long_input_alias_binds_exact_canonical_name");
+        const auto scope_short_path = expanded_fixture_path(scope_file, true);
+        if (!scope_short_path.empty() && scope_short_path != scope_long_path)
+        {
+            auto short_scope_target = freeze_one(scoped, std::filesystem::path(scope_short_path));
+            check(scoped_target && short_scope_target && short_scope_target->path == scoped_target->path &&
+                short_scope_target->identity == scoped_target->identity && same_data(scope_file),
+                "scope_short_input_alias_binds_exact_canonical_name");
+        }
+        else
+        {
+            std::puts("{\"test\":\"scope_short_input_alias_binds_exact_canonical_name\",\"status\":\"not_run\","
+                "\"reason\":\"distinct_short_name_unavailable\"}");
+        }
         const bool scope_replaced = MoveFileW(scope_root.c_str(), scope_old.c_str()) &&
             CreateDirectoryW(scope_root.c_str(), nullptr) &&
             CreateHardLinkW(scope_file.c_str(), (scope_old / L"selected.bin").c_str(), nullptr);

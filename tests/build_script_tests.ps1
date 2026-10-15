@@ -203,6 +203,16 @@ try
         throw 'build_script.skipped_evidence_false_pass'
     }
     $checks += 1
+    [IO.File]::WriteAllText($fixture, '<testsuite><testcase name="refusal"><system-out>{"test":"unknown_media_refused","status":"passed"}' + "`n" + '{"test":"supported_storage_overwrite_cases","status":"not_run","reason":"storage_media_unknown"}</system-out></testcase></testsuite>', $utf8)
+    $result = read_junit_evidence $fixture
+    if ($result.status -ne 'passed' -or $result.skipped -ne 0 -or $result.coverage_gaps.Count -ne 1 -or
+        $result.coverage_gaps[0].test_case -ne 'refusal' -or
+        $result.coverage_gaps[0].evidence.test -ne 'supported_storage_overwrite_cases' -or
+        $result.coverage_gaps[0].evidence.reason -ne 'storage_media_unknown')
+    {
+        throw 'build_script.platform_coverage_gap_not_reported'
+    }
+    $checks += 1
     foreach ($xml in @('<testsuite/>', '<testsuite><testcase><failure/></testcase></testsuite>', '<testsuite><testcase><error/></testcase></testsuite>', '<invalid'))
     {
         [IO.File]::WriteAllText($fixture, $xml, $utf8)

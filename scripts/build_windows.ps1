@@ -111,8 +111,36 @@ function read_junit_evidence([string]$path)
     {
         throw ('validation.junit_failed_or_empty:' + $path)
     }
+    $coverage_gaps = New-Object System.Collections.Generic.List[object]
+    foreach ($test_case in $cases)
+    {
+        $output_node = $test_case.SelectSingleNode('system-out')
+        if ($null -eq $output_node)
+        {
+            continue
+        }
+        foreach ($line in ($output_node.InnerText -split "`r?`n"))
+        {
+            if (-not $line.TrimStart().StartsWith('{', [StringComparison]::Ordinal))
+            {
+                continue
+            }
+            try
+            {
+                $record = $line | ConvertFrom-Json -ErrorAction Stop
+            }
+            catch
+            {
+                continue
+            }
+            if ($null -ne $record -and $null -ne $record.PSObject.Properties['status'] -and $record.status -ceq 'not_run')
+            {
+                $coverage_gaps.Add([PSCustomObject]@{test_case=$test_case.GetAttribute('name');evidence=$record})
+            }
+        }
+    }
     $status = if ($skipped.Count -gt 0) { 'not_run' } else { 'passed' }
-    return [PSCustomObject]@{status=$status;cases=$cases.Count;skipped=$skipped.Count;failures=$failed.Count}
+    return [PSCustomObject]@{status=$status;cases=$cases.Count;skipped=$skipped.Count;failures=$failed.Count;coverage_gaps=$coverage_gaps.ToArray()}
 }
 
 function read_embedded_manifest([string]$path, [string]$expected_level = 'requireAdministrator')
@@ -799,7 +827,7 @@ try
     }
     invoke_logged 'safe_tests' $ctest @('--test-dir',$build_directory,'-C','Release','--output-on-failure','--test-output-size-passed','1048576','--test-output-size-failed','1048576','--no-tests=error','-LE','destructive','--output-junit',(Join-Path $log_directory 'safe_tests.xml'))
     $safe_evidence = read_junit_evidence (Join-Path $log_directory 'safe_tests.xml')
-    $isolated_evidence = [PSCustomObject]@{status='not_run';cases=0;skipped=0;failures=0}
+    $isolated_evidence = [PSCustomObject]@{status='not_run';cases=0;skipped=0;failures=0;coverage_gaps=@()}
     if ($enable_isolated_destructive_tests)
     {
         invoke_logged 'isolated_destructive_tests' $ctest @('--test-dir',$build_directory,'-C','Release','--output-on-failure','--test-output-size-passed','1048576','--test-output-size-failed','1048576','--no-tests=error','-L','destructive','--output-junit',(Join-Path $log_directory 'isolated_destructive_tests.xml'))

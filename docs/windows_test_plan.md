@@ -14,6 +14,14 @@ Keep the complete `build_logs/<run_id>/` output outside Git. Verify fresh first-
 
 `validate_windows.bat -enable_isolated_destructive_tests` explicitly registers/runs disposable native fixtures. The registered native suites are `agent_cli_windows_isolated`, `windows_backend_isolated`, `state_store_windows_isolated` and `quick_delete_windows_isolated`; safe suites and script/module checks run separately. Fixture unavailability, skipped cases and environmental refusal stay visible at case level. A suite-level pass does not certify a fixture that never ran. The Agent CLI fixture covers actual process input/output, protected reports, mixed batches, authorization/scope rejection, exact lock identity and reparse boundaries. Deterministic console cancellation, successful forced termination and overwrite media acceptance still require their separate evidence.
 
+On a host whose virtual disk reports unknown media, `windows_backend_isolated`
+verifies that overwrite is refused and the fixture's bytes, identity and metadata
+remain intact. It explicitly records supported-device overwrite cases as
+`not_run`; this is refusal coverage, not successful overwrite coverage. The build
+result preserves these case-level limitations in `coverage_gaps`, and the missing
+hardware cases keep delivery at Source RC. Protection is never relaxed to make a
+hosted runner look like a supported physical device.
+
 ## Runtime acceptance
 
 | Area | Required observations |

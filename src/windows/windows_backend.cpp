@@ -1447,6 +1447,69 @@ namespace
             static_cast<std::uint64_t>(basic.CreationTime.QuadPart)});
     }
 
+    result<void> admit_scope_input(const scope_binding& scope, const std::wstring& path)
+    {
+        // SECURITY: An unresolved root still needs a proven scope boundary.
+        // Resolve only held nofollow prefixes; never infer containment from a
+        // short-name/case spelling or traverse a directory to discover targets.
+        std::wstring prefix = path;
+        std::wstring missing;
+        for (std::size_t depth = 0; depth <= maximum_depth; ++depth)
+        {
+            auto ancestors = pin_ancestors(prefix, true);
+            DWORD native{};
+            if (ancestors)
+            {
+                handle file(CreateFileW(prefix.c_str(), FILE_READ_ATTRIBUTES,
+                    FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
+                    FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_POSIX_SEMANTICS, nullptr));
+                if (file)
+                {
+                    FILE_ATTRIBUTE_TAG_INFO tag{};
+                    auto canonical = final_name(file.get());
+                    if (!canonical || !GetFileInformationByHandleEx(file.get(), FileAttributeTagInfo, &tag, sizeof(tag)))
+                    {
+                        return std::unexpected(!canonical ? canonical.error() : fail("quick_scope_prefix_attributes_failed"));
+                    }
+                    if (!missing.empty() && (!(tag.FileAttributes & FILE_ATTRIBUTE_DIRECTORY) ||
+                        (tag.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)))
+                    {
+                        return std::unexpected(fail("quick_scope_prefix_not_directory", ERROR_ACCESS_DENIED));
+                    }
+                    const auto candidate = canonical->ends_with(L'\\') && missing.starts_with(L'\\') ?
+                        *canonical + missing.substr(1) : *canonical + missing;
+                    if (!scope_contains(scope, candidate))
+                    {
+                        return std::unexpected(fail("quick_target_outside_scope", ERROR_ACCESS_DENIED));
+                    }
+                    return {};
+                }
+                native = GetLastError();
+            }
+            else
+            {
+                if (ancestors.error().code != "ancestor_pin_failed")
+                {
+                    return std::unexpected(ancestors.error());
+                }
+                native = ancestors.error().native_code;
+            }
+            if (native != ERROR_FILE_NOT_FOUND && native != ERROR_PATH_NOT_FOUND &&
+                native != ERROR_ACCESS_DENIED && native != ERROR_SHARING_VIOLATION)
+            {
+                return std::unexpected(fail("quick_scope_prefix_unavailable", native));
+            }
+            const auto separator = prefix.find_last_of(L'\\');
+            if (prefix.size() <= 7 || separator == prefix.npos || separator < 6)
+            {
+                return std::unexpected(fail("quick_scope_input_unresolved", ERROR_ACCESS_DENIED));
+            }
+            missing = prefix.substr(separator) + missing;
+            prefix.resize(separator == 6 ? 7 : separator);
+        }
+        return std::unexpected(fail("quick_scope_input_depth_limit", ERROR_BUFFER_OVERFLOW));
+    }
+
     class quick_cpu_counter
     {
     public:
@@ -2877,6 +2940,14 @@ namespace
                 }
                 const auto rejected = [&](error reason) -> result<void>
                 {
+                    if (scope_ && !value.ancestors && !scope_contains(*scope_, value.path))
+                    {
+                        auto admitted = admit_scope_input(*scope_, value.path);
+                        if (!admitted)
+                        {
+                            return admitted;
+                        }
+                    }
                     auto text = utf8(value.path);
                     if (!text)
                     {
@@ -3149,11 +3220,9 @@ namespace
                         }
                         continue;
                     }
-                    if (scope_ && !scope_contains(*scope_, *normalized))
-                    {
-                        fail_work(fail("quick_target_outside_scope", ERROR_ACCESS_DENIED));
-                        break;
-                    }
+                    // SECURITY: Root spelling may contain legitimate 8.3 aliases.
+                    // The worker checks held canonical scope before enumeration;
+                    // even failed opens must prove their nofollow prefix in scope.
                     work value{std::move(*normalized), {}, 0};
                     value.charge = charge_work(value);
                     {
