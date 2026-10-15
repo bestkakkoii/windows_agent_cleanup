@@ -28,10 +28,10 @@ int main()
     }
     expect(!parse({"capabilities", "--contract-version", "2", "--contract-version", "2"}),
         "duplicate_contract_rejected");
-    const std::vector<std::string> status{"status", "--request-id", "unit_status", "--report-dir", "C:\\private",
+    const std::vector<std::string> status_arguments{"status", "--request-id", "unit_status", "--report-dir", "C:\\private",
         "--contract-version", "2"};
-    expect(parse(status) && parse(status)->root.empty() && parse(status)->manifest.empty(), "status_read_only_no_scope_required");
-    auto invalid_status = status;
+    expect(parse(status_arguments) && parse(status_arguments)->root.empty() && parse(status_arguments)->manifest.empty(), "status_read_only_no_scope_required");
+    auto invalid_status = status_arguments;
     invalid_status.pop_back();
     invalid_status.pop_back();
     expect(!parse(invalid_status), "status_requires_v2");
@@ -40,11 +40,11 @@ int main()
         {"--authorize-close"}, {"--authorize-force"}, {"--mode", "quick"}, {"--workers", "1"},
         {"--log-retention-days", "0"}, {"--checkpoint-retention-days", "0"}})
     {
-        invalid_status = status;
+        invalid_status = status_arguments;
         invalid_status.insert(invalid_status.end(), option.begin(), option.end());
         expect(!parse(invalid_status), "status_rejects_all_execution_options");
     }
-    expect(cli::requested_contract_version(status) == 2 && cli::requested_contract_version({}) == 1,
+    expect(cli::requested_contract_version(status_arguments) == 2 && cli::requested_contract_version({}) == 1,
         "parse_failure_envelope_selects_only_explicit_v2");
     const std::vector<std::string> option_as_value{"run", "--root", "--contract-version", "2"};
     expect(cli::requested_contract_version(option_as_value) == 1, "contract_option_value_is_not_negotiation");
