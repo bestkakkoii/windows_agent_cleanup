@@ -14,7 +14,8 @@
     "cli": "native_machine_only",
     "mcp": false,
     "universal_agent_entry": "README_AI.md",
-    "skills": "optional complete portable procedural bundle with progressive disclosure"
+    "skills": "optional complete portable procedural bundle with progressive disclosure",
+    "tool_location": "Agent-selected suitable absolute location; derive from actual README/Skill root, not an example drive or parent directory"
   },
   "invariants": [
     "whole-batch membership frozen before deletion",
@@ -34,7 +35,15 @@
   "evidence": {
     "windows_compilation_and_hardware_owner": "user; CI may supply separately scoped native evidence",
     "required_test_gates": "57 approved base decisions and risk-specific tests",
-    "missing_platform_evidence": "no Release; scoped RC only after owner evidence review"
+    "missing_platform_evidence": "No later full Release without scoped owner evidence review; first-public v2.0.0 exception is recorded under publication.first_public_distribution",
+    "verified_native_ci": {
+      "source_commit": "2b552ba92c9e81cb1ef4b8101619993677b5548a",
+      "run_id": 38778771188,
+      "url": "https://github.com/bestkakkoii/windows_agent_cleanup/actions/runs/38778771188",
+      "status": "passed",
+      "scope": "Hosted Windows native build/manifests, 11 safe suites, 4 isolated suites and source packaging; does not execute or attest the owner-supplied Release EXEs, desktop GUI or full physical-storage matrix",
+      "coverage_gaps": "See docs/windows_test_plan.md; per-case not_run evidence remains distinct from passing suites"
+    }
   },
   "git_policy": {
     "tracked": "maintained source/config/docs/assets/tests and immutable dependency locks",
@@ -49,7 +58,7 @@
     ]
   },
   "publication": {
-    "status": "owner_authorized_first_public_distribution_preparation",
+    "status": "first_public_binary_release_published",
     "automatic_publication": false,
     "ci_distribution": "unpublished development test artifacts only",
     "owner_returned_windows_build_and_test_evidence_required_for": [
@@ -63,7 +72,7 @@
       "os_build",
       "test_results"
     ],
-    "full_release_latest": "only after all applicable mandatory acceptance gates pass",
+    "full_release_latest": "Normal gates apply to later versions; published v2.0.0 uses the explicit first_public_distribution owner exception",
     "first_public_distribution": {
       "version": "2.0.0",
       "owner_authorized_local_date": "2026-10-16",
@@ -72,7 +81,20 @@
       "cli_agent_acceptance": "pending",
       "hardware_matrix": "not_completed",
       "source_to_binary_commit_binding": "not_independently_attested",
-      "policy": "docs/publication.md"
+      "policy": "docs/publication.md",
+      "status": "published_latest",
+      "tag": "v2.0.0",
+      "release_id": 414107588,
+      "url": "https://github.com/bestkakkoii/windows_agent_cleanup/releases/tag/v2.0.0",
+      "published_at_utc": "2026-10-15T17:55:27Z",
+      "source_reference_commit": "2b552ba92c9e81cb1ef4b8101619993677b5548a",
+      "runtime_source_reference_commit": "479c3aa44cc918ec09a4c50a8a799ad1c89d9d0d",
+      "archive": {
+        "name": "windows_agent_cleanup_v2.0.0_windows_x64.zip",
+        "bytes": 1235888,
+        "sha256": "e200b77c0cfb0aa966964c8653d1d4ad69c43ea7c9cd6062dee24690b8831372"
+      },
+      "contents": "GUI/CLI binaries, runtime instructions, complete Skill, operational schemas and licenses; application sources/build scripts/tests excluded"
     }
   },
   "encoding": {

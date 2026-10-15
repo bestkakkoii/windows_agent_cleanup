@@ -14,19 +14,29 @@
 
 Windows Agent Cleanup removes large project cleanup batches through a native C++ core shared by a machine-oriented CLI and a compact desktop GUI. Quick deletion removes selected names without reading or overwriting file contents. The separate overwrite workflow provides explicit, evidence-based sanitization results.
 
-**Application version: 2.0.0-dev.1.** The owner has authorized a first public binary distribution, `v2.0.0`, using the returned GUI/CLI executables unchanged. CLI Agent acceptance and hardware coverage remain explicitly scoped in the [publication policy](docs/publication.md). CI produces test evidence; a passing run alone does not authorize publication. This project does not claim a hardware-independent maximum speed or physical NAND sanitization.
+**[Download v2.0.0 for Windows x64](https://github.com/bestkakkoii/windows_agent_cleanup/releases/tag/v2.0.0).** This published Latest Release contains the owner-supplied GUI/CLI binaries, runtime instructions, the complete Skill, schemas and licenses; application source and build/test files remain in Git. Verify the accompanying SHA-256 file before use. **The unchanged EXEs still report application version `2.0.0-dev.1`; the GUI retains its original development-build footer.** CLI Agent acceptance and the full hardware matrix remain pending, as scoped in the [publication policy](docs/publication.md). This project does not claim a hardware-independent maximum speed or physical NAND sanitization.
 
 ## Start with your agent
 
-Place the tool on the same Windows machine as the files, then tell Codex, Claude Code, or another agent with local file and process access:
+Extract the complete bundle to a suitable directory on the target Windows machine. The Agent may choose that directory according to available space, permissions and project or user scope; reuse an existing valid installation. No drive letter or parent directory is required. Then tell Codex, Claude Code, or another local agent to read the actual absolute path:
 
 ```text
-Read C:/tools/windows_agent_cleanup/README_AI.md
+Read <absolute path to the extracted tool>/README_AI.md
 ```
 
-The agent asks which cleanup plan to use and which project is in scope. After you choose, it identifies disposable material, submits a bulk manifest, and interprets a compact result. Reading the manual alone does not authorize deletion.
+The path above is a placeholder, not an installation requirement. The agent asks which cleanup plan to use and which project is in scope. After you choose, it identifies disposable material, submits a bulk manifest, and interprets a compact result. Reading the manual alone does not authorize deletion.
 
 The direct README route needs no MCP server, Skill installation, Python, Node.js, or model SDK. Optional [Agent Skills](skills/project-cleanup/SKILL.md) bundle the cleanup workflow, predefined plans and conditional protocol references. `README_AI.md` routes any agent to that shared workflow without requiring installation.
+
+## Use the GUI
+
+Open `bin/secure_erase_gui.exe`, choose **Quick delete** or **Overwrite and verify**,
+and add or drag files/folders. **Start** prepares the batch; review **Confirm
+batch** and approve the irreversible action. “Frozen targets” describes that
+fixed selection, not an error. Completed inputs leave the list; incomplete
+inputs remain for review. For a failure, copy the diagnostic JSON with its native
+error code. Overwrite downgrade and forced-process actions require separate
+approval.
 
 ## What the native core does
 
@@ -51,7 +61,7 @@ flowchart TD
 
 ## Build and inspect
 
-Production targets Windows 11 or later on x64, MSVC, native C++ named modules and vendor `import std`. Build Release with the static MSVC runtime through `build_release.bat`. Build inputs, commands and validation boundaries are documented in [README_AI.md](README_AI.md#engineering-tasks).
+Production targets Windows 11 or later on x64, MSVC, native C++ named modules and vendor `import std`. Build Release with the static MSVC runtime through `build_release.bat`. Build inputs, commands and validation boundaries are documented in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 | Document | Purpose |
 |---|---|
@@ -61,4 +71,12 @@ Production targets Windows 11 or later on x64, MSVC, native C++ named modules an
 | [Approved requirements](spec/requirements.json) | Base requirements and explicit amendments |
 | [Windows test plan](docs/windows_test_plan.md) | Platform and storage evidence |
 
-Source, dependency locks, validation evidence and release artifacts must correspond to the same revision. [Publication policy](docs/publication.md) separates development artifacts, approved prereleases and full Releases. Generated binaries and per-run logs do not belong in the source tree.
+Release records bind each artifact to its source reference, binary provenance and actual validation scope. The owner-supplied v2.0.0 binaries have no independently attested source-to-binary correspondence; a documentation update on `main` does not replace the published asset. [Publication policy](docs/publication.md) separates development artifacts, approved prereleases and full Releases. Generated binaries and per-run logs do not belong in the source tree.
+
+## Help and contributions
+
+For a reproducible problem, [open an issue](https://github.com/bestkakkoii/windows_agent_cleanup/issues)
+with the distribution/application versions, artifact hash or tested source
+commit, Windows build and masked diagnostics. Follow [SECURITY.md](SECURITY.md)
+for vulnerabilities and [CONTRIBUTING.md](CONTRIBUTING.md) to extend the tool.
+The repository is maintained by bestkakkoii and contributors under [MIT](LICENSE).

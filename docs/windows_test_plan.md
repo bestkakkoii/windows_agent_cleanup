@@ -6,7 +6,7 @@ Use only created disposable fixtures in a VM, disposable volume or dedicated tes
 
 ## Build evidence
 
-From a clean source checkout, run `build_release.bat` under an ordinary effective
+From the source repository root, run `build_release.bat` under an ordinary effective
 token. The same command compiles, checks embedded manifests and executes all
 safe suites. Safe C++ and script fixtures, diagnostics and CLI help do not
 require administrator rights.
@@ -17,20 +17,43 @@ elevated token; capabilities does not. Verify both the explicit
 request. Only the explicit `-enable_isolated_destructive_tests` switch requires
 an already elevated token for privileged fixtures; the build never grants it.
 An opt-in elevation refusal after successful compilation retains that
-compilation and manifest evidence and reports tests not started.
+compilation and manifest evidence; neither safe nor isolated tests start for that
+invocation. There is one launcher and no build-only/validation mode.
 
-Install Visual Studio x64 C++ tools with the vendor standard-library module, a complete Windows SDK 10.0.22000.0+, and a bootstrap CMake 3.15+ (VS-bundled accepted). The script builds exact hash-locked upstream-master CMake 4.5.20261015 and Ninja 1.14.0.git into ignored `build/tools`; installed Ninja is optional because `nmake` can bootstrap it. First build needs network and more compilation time; a valid binary-hash-verified cache supports offline rebuilding without global installation. Preserve all recorded exact identities. Check actual `/std:c++latest`, Release `/O2 /GL /LTCG /MT`, strict diagnostics, no debug instrumentation/PDB, native module ownership and vendor `import std`. A CMake metadata label alone does not prove compiler mode or feature completeness.
+Each invocation configures and builds `build/windows_release`, then checks the
+completed binaries and runs CTest. A rerun is incremental, not an automatic clean
+build. For clean-build evidence, use a fresh checkout/extraction with no existing
+`build/windows_release`; record tool/dependency cache reuse separately. Keep the
+previous logs before replacing a disposable build directory. CMD automation may
+set `SECURE_ERASE_NO_PAUSE=1` to suppress the launcher's final pause.
+
+Install Visual Studio x64 C++ tools with the vendor standard-library module, a complete Windows SDK 10.0.22000.0+, and a bootstrap CMake 3.15+ (VS-bundled accepted). The current dependency lock pins upstream-master snapshots of CMake 4.5.20261015 and Ninja 1.14.0.git. The script builds those exact sources into ignored `build/tools`; installed Ninja is optional because `nmake` can bootstrap it. First build needs network and more compilation time; a valid binary-hash-verified tool cache together with verified dependency files supports offline rebuilding without global installation. These are pinned snapshots, not a floating download of the newest branch head. Preserve all recorded exact identities. Check actual `/std:c++latest`, Release `/O2 /GL /LTCG /MT`, strict diagnostics, no debug instrumentation/PDB, native module ownership and vendor `import std`. A CMake metadata label alone does not prove compiler mode or feature completeness.
 
 Keep the complete `build_logs/<run_id>/` output outside Git. Verify fresh first-build dependency restoration with the locked hashes, a cached offline rebuild, non-ASCII paths and spaces, a fresh bootstrap under system code page 950 with `/utf-8` for C and C++, PATH/fallback tool discovery, clean rebuild without prebuilt IFC/BMI, incompatible std-provider rejection, and Debug rejection. A corrupt dependency must be repaired and reverified or rejected before compilation.
 
-`build_release.bat -enable_isolated_destructive_tests` explicitly registers/runs disposable native fixtures. The registered native suites are `agent_cli_windows_isolated`, `windows_backend_isolated`, `state_store_windows_isolated` and `quick_delete_windows_isolated`; safe suites and script/module checks run separately. Fixture unavailability, skipped cases and environmental refusal stay visible at case level. A suite-level pass does not certify a fixture that never ran. The Agent CLI fixture covers actual process input/output, protected reports, mixed batches, authorization/scope rejection, exact lock identity and reparse boundaries. Deterministic console cancellation, successful forced termination and overwrite media acceptance still require their separate evidence.
+Owned code/build files must decode as strict UTF-8 and carry a BOM; Windows
+preflight checks them before discovery/compilation. Source validation additionally
+checks documentation and host-format exceptions: Markdown normally has a BOM,
+Skill frontmatter does not, JSON/JSONL/YAML have no BOM, and BAT uses ASCII CRLF.
+Immutable upstream files retain their original bytes and compile with explicit
+UTF-8 flags. Clear inherited `CL`, `_CL_`, `LINK`, `CFLAGS`, `CXXFLAGS` and
+`RCFLAGS`; the build rejects these overrides instead of accepting unreviewed flags.
+
+`build_release.bat -enable_isolated_destructive_tests` explicitly registers/runs disposable native fixtures. The registered native suites are `agent_cli_windows_isolated`, `windows_backend_isolated`, `state_store_windows_isolated` and `quick_delete_windows_isolated`; safe suites run first through a separate CTest invocation. The current Windows registration contains 11 safe suites and 4 opt-in isolated suites; record the actual names/counts from that revision's JUnit, not a portable-suite count or an old assertion total. Fixture unavailability, skipped cases and environmental refusal stay visible at case level. A suite-level pass does not certify a fixture that never ran. The Agent CLI fixture covers actual process input/output, protected reports, mixed batches, authorization/scope rejection, exact lock identity and reparse boundaries. Deterministic console cancellation, successful forced termination and overwrite media acceptance still require their separate evidence.
 
 On a host whose virtual disk reports unknown media, `windows_backend_isolated`
 verifies that overwrite is refused and the fixture's bytes, identity and metadata
 remain intact. It explicitly records supported-device overwrite cases as
 `not_run`; this is refusal coverage, not successful overwrite coverage. The build
-result preserves these case-level limitations in `coverage_gaps`, and the missing
-hardware cases prevent full Release; publication also waits for the owner’s returned evidence. Protection is never relaxed to make a
+result preserves individual `status: not_run` records in `coverage_gaps`. Also
+inspect JUnit/raw stdout: the Agent CLI summary lists
+`deterministic_console_cancellation`, `successful_force_termination` and
+`overwrite_media_validation` in its `not_run` array, which is not merged into
+`coverage_gaps`. A top-level `passed` result can still contain untested cases;
+a whole-suite skip instead makes the build result `incomplete` with exit code 3.
+These distinctions remain necessary even when CTest exits successfully. Missing
+hardware cases prevent ordinary full-platform acceptance, subject only to the
+explicit publication exception below. Protection is never relaxed to make a
 hosted runner look like a supported physical device.
 
 ## Runtime acceptance
@@ -39,7 +62,7 @@ hosted runner look like a supported physical device.
 |---|---|
 | Agent entry | Fresh sessions using only the absolute README path, optional Codex Skill, optional Claude Skill, and delegated discovery. Ask for the predefined plan/scope; scan does not delete; development routing never cleans the repository. |
 | Disposable classification | Include known generated/cache/intermediate material, active outputs, valuable research, uncertain code, unique copies and unconfirmed local changes. Ambiguous items remain intact. Large known groups use programmatic discovery rather than per-file model context. |
-| Native CLI | Verify `capabilities`, `run`, `scan` and protected overwrite resume against their current schema. One final compact stdout JSON result, bound identifiers, exact exit code and external failure report. Existing safe private report stores can be reused exclusively; `scan_partial` returns exit3 and does not delete. Unknown/duplicate input, BOM, malformed UTF-8, blank records, wildcards, ADS and invalid local paths reject. |
+| Native CLI | Verify `capabilities`, `run`, `scan` and protected overwrite resume against their current schema. One final compact stdout JSON result, bound identifiers, exact exit code and external failure report. Existing safe private report stores can be reused exclusively; `scan_partial` returns exit code 3 and does not delete. Unknown/duplicate input, BOM, malformed UTF-8, blank records, wildcards, ADS and invalid local paths reject. |
 | Batch scale | Tens and hundreds of thousands of tiny files, including more than 100000 targets where resources permit. Measure manifest read, parallel preparation, bounded external runs, sealed indexes, outcome reservation and total peak memory. Full strings/outcomes stay in protected scratch; compact scheduling metadata still needs resource admission. Under memory/commit/handle/disk pressure, reject before deletion rather than truncate. |
 | Frozen membership | Mixed and overlapping selections, duplicate selected names, root aliases, additions after preparation and replaced targets. New/replacement objects survive. A nonempty directory with unselected/new members fails without pursuing them. |
 | Protection | System/boot/recovery/WRP/service resources, protected aliases, own binaries/state and inaccessible protection evidence refuse mutation. Reports and plans cannot overlap the authorized cleanup root. |
@@ -67,10 +90,33 @@ Primary measurement is total time from manifest/discovery through admission, del
 
 ## Evidence and release gate
 
-Bind logs, commands, fixture recipe, expected/actual statuses, compiler/SDK/std provider, dependency lock, OS/device/filesystem identities and source/package SHA-256 to one revision. Build logs may reveal local paths; sanitize public excerpts without losing error codes and neighboring context. Keep protected checkpoints private unless diagnosis specifically requires them.
+Use a copy of the evidence template for each tested revision/environment; its default `not_run` entries are not results. Bind logs, exact commands and effective token, clean/incremental build state, cache reuse, fixture recipe, expected/actual statuses, compiler/SDK/std provider, dependency lock, OS/device/filesystem identities and artifact SHA-256 to that run. Preserve `result.json`, `events.jsonl`, stage logs, extracted manifests and both available JUnit files. Keep suite counts and case-level omissions separate; repeat hardware rows per actual device/filesystem combination. Build logs may reveal local paths; sanitize public excerpts without losing error codes and neighboring context. Keep protected checkpoints private unless diagnosis specifically requires them.
 
 Release requires all applicable mandatory unit/integration/isolated destructive gates and the claimed native platform matrix to pass, with no unresolved blocking safety finding. Both RC and Release publication wait for the owner’s returned Windows build/test evidence and review for the exact revision. CI artifacts remain unpublished development test sources. After owner acceptance, incomplete platform/hardware coverage permits at most an explicitly scoped RC; full Release requires the claimed matrix to pass. Unsupported cases must be explicitly rejected or receive only their independently authorized lower capability. Attestations establish provenance, not runtime correctness, signing or physical NAND erasure.
 
-The owner's later explicit `v2.0.0` first-public-distribution instruction is a
-scoped publication exception documented in [publication policy](publication.md).
-Keep all pending cases and provenance limitations visible when applying it.
+For the first public distribution, [v2.0.0](https://github.com/bestkakkoii/windows_agent_cleanup/releases/tag/v2.0.0)
+was published as the formal Latest release on 2026-10-16 (Asia/Taipei), at source
+commit `2b552ba92c9e81cb1ef4b8101619993677b5548a`, under the owner's explicit
+[publication exception](publication.md). Its
+`windows_agent_cleanup_v2.0.0_windows_x64.zip` contains the exact owner-supplied
+executables and user-facing material, without build/source/test trees. The
+application reports `2.0.0-dev.1`; the distribution tag does not change its bytes.
+The owner reported GUI quick deletion and verified overwrite smoke success;
+CLI Agent acceptance and the full hardware matrix remain pending. The supplied
+binaries have no independently authenticated binding to a source commit.
+
+[CI run 38778771188](https://github.com/bestkakkoii/windows_agent_cleanup/actions/runs/38778771188)
+passed at that source commit on hosted Windows Server 2025 with MSVC
+19.51.36260.0 and SDK 10.0.26100.0: 11 safe and 4 isolated suites, plus source
+packaging and archive verification. That is native engineering evidence for the
+runner, not a Windows 11 device-matrix pass or proof that the owner binaries came
+from CI. The three Agent CLI omissions and unknown-media overwrite omissions
+above remain untested even though the suites passed.
+
+Keep the binary release separate from CI's unpublished development test Source
+ZIP. `scripts/package.py` and `scripts/verify_package.py` create/verify that source
+format, not the owner binary ZIP or GitHub's automatic source archives. The
+`--offline-dependencies` source-package option includes verified ImGui files; it
+does not include built CMake/Ninja tools, so a first tool bootstrap can still need
+network access. Archive integrity checks bind the recorded bytes and evidence;
+they do not independently reproduce a native build or complete acceptance.

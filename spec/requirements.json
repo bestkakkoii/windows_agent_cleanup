@@ -14,8 +14,8 @@
       "round": 2,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "NTFS, ReFS, FAT32 and exFAT are within scope; capability uncertainty is explicitly downgraded or rejected.",
-      "implementation_status": "source_under_rework_pending_current_acceptance",
-      "validation_status": "requires_current_run_evidence; test paths are not pass claims",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/windows/windows_backend.cpp",
         "src/modules/model.ixx",
@@ -33,7 +33,7 @@
         "tests/portable_integration_tests.cpp"
       ],
       "test_evidence_kind": "source_locations_not_pass_claims",
-      "scope_note": "Capability coverage is not equivalent physical overwrite: ReFS and special formats require explicit delete-only approval; unknown storage is rejected."
+      "scope_note": "Both modes target NTFS/ReFS/FAT32/exFAT subject to live checks. Overwrite requires supported storage evidence; ReFS and special-file states can require explicit delete-only grants. Quick does not overwrite and may conservatively group unknown physical topology. Filesystem scope is not a passed device matrix."
     },
     {
       "id": "R02",
@@ -41,8 +41,8 @@
       "round": 2,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Do not follow symbolic links or junctions; never overwrite shared hard-link data.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/windows/windows_backend.cpp",
         "src/modules/model.ixx",
@@ -60,7 +60,7 @@
         "tests/portable_integration_tests.cpp"
       ],
       "test_evidence_kind": "source_locations_not_pass_claims",
-      "scope_note": "Reparse ancestors and final components are rejected; shared hard-link data is never overwritten."
+      "scope_note": "Reparse ancestors and final components are rejected in both modes. Quick removes selected namespace entries only; overwrite never writes shared hard-link data. The later Quick alias contract differs from overwrite identity deduplication; see R44."
     },
     {
       "id": "R03",
@@ -68,8 +68,8 @@
       "round": 2,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Protect Windows, boot, recovery, system-service resources and important filesystem metadata.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/windows/windows_backend.cpp",
         "src/modules/model.ixx",
@@ -86,7 +86,8 @@
         "tests/engine_tests.cpp",
         "tests/portable_integration_tests.cpp"
       ],
-      "test_evidence_kind": "source_locations_not_pass_claims"
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "OS/service/boot/recovery/private-state tree protection remains fail-closed. Self-protection pins the running EXE and loaded modules by exact path/file identity and protects containing selected ancestors; unrelated executable-directory siblings are permitted."
     },
     {
       "id": "R04",
@@ -94,8 +95,8 @@
       "round": 2,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Attempt graceful lock release first; each forced process termination requires separate confirmation.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/windows/backend_locks.cpp",
         "src/app/application.cpp",
@@ -107,7 +108,8 @@
         "tests/windows_backend_tests.cpp",
         "docs/windows_test_plan.md"
       ],
-      "test_evidence_kind": "source_locations_not_pass_claims"
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Quick automatic access/lock recovery waits for the entire first pass and never force-terminates. Manual GUI/CLI process release uses fresh target/PID/creation-time/image evidence; force is independently authorized per unprotected user process."
     },
     {
       "id": "R05",
@@ -115,8 +117,8 @@
       "round": 2,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Select the best-effort strategy from actual storage-media and filesystem capabilities.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/windows/windows_backend.cpp",
         "src/modules/model.ixx",
@@ -133,7 +135,8 @@
         "tests/engine_tests.cpp",
         "tests/portable_integration_tests.cpp"
       ],
-      "test_evidence_kind": "source_locations_not_pass_claims"
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Overwrite selects only supported media/filesystem strategies and reports capability limitations. Quick media facts guide scheduling, not overwrite assurance; unknown physical topology is grouped conservatively without relaxing identity/protection checks. No best-on-all-hardware performance claim."
     },
     {
       "id": "R06",
@@ -141,8 +144,8 @@
       "round": 3,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Process every accessible alternate data stream; report stream enumeration/access failures explicitly.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/windows/windows_backend.cpp",
         "src/modules/model.ixx",
@@ -159,7 +162,8 @@
         "tests/engine_tests.cpp",
         "tests/portable_integration_tests.cpp"
       ],
-      "test_evidence_kind": "source_locations_not_pass_claims"
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Applies to verified overwrite: enumerate and process admitted accessible streams, reporting failures. Quick performs namespace deletion without payload stream enumeration, overwrite or readback."
     },
     {
       "id": "R07",
@@ -167,8 +171,8 @@
       "round": 3,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Default to one pass of cryptographically secure pseudorandom overwrite data.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/core/crypto.cpp",
         "src/modules/crypto.ixx",
@@ -191,7 +195,8 @@
         "tests/codec_tests.cpp",
         "tests/state_store_windows_tests.cpp"
       ],
-      "test_evidence_kind": "source_locations_not_pass_claims"
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Applies to overwrite mode. The later explicit Quick mode performs logical deletion without a payload pass and does not claim equivalent erasure assurance."
     },
     {
       "id": "R08",
@@ -199,8 +204,8 @@
       "round": 3,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Flush then read back all overwritten bytes and compare against the exact expected stream.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/modules/model.ixx",
         "src/modules/platform.ixx",
@@ -221,7 +226,8 @@
         "tests/portable_integration_tests.cpp",
         "tests/cli_arguments_tests.cpp"
       ],
-      "test_evidence_kind": "source_locations_not_pass_claims"
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Overwrite flushes and compares all expected bytes before deletion; a read-success check alone is insufficient. Quick has no content-verification phase. Explicitly authorized delete-only targets are reported as such rather than verified overwrites."
     },
     {
       "id": "R09",
@@ -229,8 +235,8 @@
       "round": 3,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Use the native Windows TRIM path when applicable; never equate acceptance with physical sanitization.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/windows/windows_backend.cpp",
         "src/modules/model.ixx",
@@ -247,7 +253,8 @@
         "tests/engine_tests.cpp",
         "tests/portable_integration_tests.cpp"
       ],
-      "test_evidence_kind": "source_locations_not_pass_claims"
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Applies to overwrite where the backend admits native TRIM. Acceptance is not proof of NAND erasure; Quick does not add a file-content/TRIM workflow."
     },
     {
       "id": "R10",
@@ -255,8 +262,8 @@
       "round": 3,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Stop the affected operation on failure and retain truthful partial state.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/modules/model.ixx",
         "src/modules/platform.ixx",
@@ -277,7 +284,8 @@
         "tests/portable_integration_tests.cpp",
         "tests/cli_arguments_tests.cpp"
       ],
-      "test_evidence_kind": "source_locations_not_pass_claims"
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Per-target failures and affected-device faults retain partial state. Quick resource or audit-storage failure can stop later work after earlier deletions; untouched targets retain quick_not_attempted and a separate stopping_error. Unknown completion never authorizes an automatic new scan."
     },
     {
       "id": "R11",
@@ -285,8 +293,8 @@
       "round": 3,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Process a batch per file, skip failed items, and remove directories only when empty.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/modules/model.ixx",
         "src/modules/platform.ixx",
@@ -307,7 +315,8 @@
         "tests/portable_integration_tests.cpp",
         "tests/cli_arguments_tests.cpp"
       ],
-      "test_evidence_kind": "source_locations_not_pass_claims"
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Quick schedules a directory as its own child dependencies settle; overwrite completes file workers before deepest-first directory work. Neither recursively consumes additions discovered at deletion time, and nonempty directories remain failures."
     },
     {
       "id": "R12",
@@ -315,8 +324,8 @@
       "round": 4,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Maximize speed only within unchanged safety and complete-verification guarantees.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/modules/model.ixx",
         "src/modules/platform.ixx",
@@ -337,7 +346,8 @@
         "tests/portable_integration_tests.cpp",
         "tests/cli_arguments_tests.cpp"
       ],
-      "test_evidence_kind": "source_locations_not_pass_claims"
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Safety and required verification constrain overwrite optimization. The later Quick mode deliberately has logical-delete semantics, so its speed is not compared as an equivalent verified erase. No universal maximum-speed claim is supported."
     },
     {
       "id": "R13",
@@ -345,8 +355,8 @@
       "round": 4,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Assess synchronous/overlapped I/O, caching and alignment according to the device.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/windows/windows_backend.cpp",
         "src/modules/model.ixx",
@@ -364,7 +374,7 @@
         "tests/portable_integration_tests.cpp"
       ],
       "test_evidence_kind": "source_locations_not_pass_claims",
-      "scope_note": "Buffered write-through I/O, positioned overlapped SSD operations and synchronous HDD/USB operations; no unaligned FILE_FLAG_NO_BUFFERING path is claimed."
+      "scope_note": "Overwrite uses buffered write-through I/O, positioned overlapped SSD operations and synchronous HDD/USB operations. Each overlapped operation is awaited; neither a per-file multi-request pipeline nor FILE_FLAG_NO_BUFFERING/alignment optimization is claimed."
     },
     {
       "id": "R14",
@@ -372,8 +382,8 @@
       "round": 4,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Group work by physical storage device and dynamically bound each device's concurrency.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/modules/model.ixx",
         "src/modules/platform.ixx",
@@ -394,7 +404,8 @@
         "tests/portable_integration_tests.cpp",
         "tests/cli_arguments_tests.cpp"
       ],
-      "test_evidence_kind": "source_locations_not_pass_claims"
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Quick groups shared physical extents, conservatively groups unknown topology and tunes per-group concurrency through measured probes/rollback/cooldown. Overwrite uses supported-device keys, HDD/USB depth one, configurable SSD depth 1–4 and a pressure-limited global worker pool; it does not use the Quick throughput tuner."
     },
     {
       "id": "R15",
@@ -402,8 +413,8 @@
       "round": 4,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Use bounded buffers and allow a configurable global memory ceiling.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/modules/model.ixx",
         "src/modules/platform.ixx",
@@ -425,7 +436,7 @@
         "tests/cli_arguments_tests.cpp"
       ],
       "test_evidence_kind": "source_locations_not_pass_claims",
-      "scope_note": "Budget constrains engine working memory and buffers; allocator, GUI, OS cache and driver memory are not a process RSS hard limit. Metadata also has explicit count/text bounds."
+      "scope_note": "Quick uses file-backed target strings/outcomes and resource-admitted resident metadata proportional to target count; there is no fixed 100000-target or 16-worker Quick ceiling. Caller limits can lower live budgets, and an oversized complete plan is refused. Overwrite retains a resident plan, explicit buffer/metadata accounting and format/size bounds. Neither budget is a total process RSS cap covering allocator, GUI, OS cache or driver memory."
     },
     {
       "id": "R16",
@@ -433,8 +444,8 @@
       "round": 4,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Choose overwrite block size from device characteristics, alignment and measurements.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "partial_source_coverage_device_alignment_tuning_open",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/modules/model.ixx",
         "src/modules/platform.ixx",
@@ -456,7 +467,7 @@
         "tests/cli_arguments_tests.cpp"
       ],
       "test_evidence_kind": "source_locations_not_pass_claims",
-      "scope_note": "Transfer latency drives bounded chunk adaptation; hardware throughput tuning remains unmeasured."
+      "scope_note": "Overwrite transfer latency adapts chunks between 64 KiB and the configured ceiling (up to 8 MiB). Device/alignment-specific optimal block selection is not fully established by this implementation or current hardware evidence; that part of the approved performance target remains open."
     },
     {
       "id": "R17",
@@ -464,8 +475,8 @@
       "round": 4,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Support pause, cancel and durable checkpoints; revalidate target identity before resume.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/modules/model.ixx",
         "src/modules/platform.ixx",
@@ -489,7 +500,8 @@
         "tests/portable_integration_tests.cpp",
         "tests/state_store_windows_tests.cpp"
       ],
-      "test_evidence_kind": "source_locations_not_pass_claims"
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Durable authenticated checkpoints and identity/content-validated resume apply to overwrite. Quick pause/continuation retains the same live staged store; external reports or a restarted process are not Quick resume authority. Both modes retain truthful partial/cancelled outcomes."
     },
     {
       "id": "R18",
@@ -497,8 +509,8 @@
       "round": 4,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Dynamically limit CPU, I/O and queued work according to system load.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/modules/model.ixx",
         "src/modules/platform.ixx",
@@ -520,7 +532,7 @@
         "tests/cli_arguments_tests.cpp"
       ],
       "test_evidence_kind": "source_locations_not_pass_claims",
-      "scope_note": "CPU/RAM pressure, per-device queues and shared bandwidth limiter; system-global scheduling control is not claimed."
+      "scope_note": "Quick periodically samples memory/commit/CPU/handle/device pressure, adjusts admitted concurrency and can stop when resource/topology revalidation fails. Overwrite uses CPU/RAM pressure, per-device queues, bounded chunks and an optional shared bandwidth limiter. Neither provides system-global CPU/I/O scheduling control."
     },
     {
       "id": "R19",
@@ -528,8 +540,8 @@
       "round": 5,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Use Dear ImGui, Win32 and DirectX 11 in a single native GUI window.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/app/application.cpp",
         "src/gui/main.cpp",
@@ -541,7 +553,8 @@
         "tests/cli_arguments_tests.cpp",
         "docs/windows_test_plan.md"
       ],
-      "test_evidence_kind": "source_locations_not_pass_claims"
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "The owner reported GUI Quick/overwrite smoke success. Hosted native CI and test-source presence are not desktop GUI acceptance for every supported Windows build."
     },
     {
       "id": "R20",
@@ -549,8 +562,8 @@
       "round": 5,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Ship distinct GUI and CLI executables backed by the same core library.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/app/application.cpp",
         "src/gui/main.cpp",
@@ -562,7 +575,8 @@
         "tests/cli_arguments_tests.cpp",
         "docs/windows_test_plan.md"
       ],
-      "test_evidence_kind": "source_locations_not_pass_claims"
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "GUI and CLI share native plan/execution/backend contracts while retaining interface-specific orchestration. CLI is machine-only and does not load a GUI runtime or require MCP. Owner CLI Agent acceptance remains pending."
     },
     {
       "id": "R21",
@@ -570,8 +584,8 @@
       "round": 5,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Preview every frozen target, size and risk before confirming the whole batch.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/app/application.cpp",
         "src/gui/main.cpp",
@@ -583,7 +597,8 @@
         "tests/cli_arguments_tests.cpp",
         "docs/windows_test_plan.md"
       ],
-      "test_evidence_kind": "source_locations_not_pass_claims"
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "The later Agent CLI amendment allows authorized run to prepare and execute one scoped manifest request without per-file prompts or a mandatory separate scan invocation. GUI exposes the frozen batch before confirmation. Quick scan is advisory; overwrite scan can preserve a protected plan. Every execution still freezes complete membership before mutation."
     },
     {
       "id": "R22",
@@ -591,8 +606,8 @@
       "round": 5,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "CLI defaults to preview and requires an explicit irreversible-operation confirmation argument.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/app/application.cpp",
         "src/gui/main.cpp",
@@ -604,7 +619,8 @@
         "tests/cli_arguments_tests.cpp",
         "docs/windows_test_plan.md"
       ],
-      "test_evidence_kind": "source_locations_not_pass_claims"
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Superseded CLI default: no arguments return capabilities, not preview. scan is explicit; run/resume require --authorize-irreversible plus the scoped request contract. Independent downgrade/process-force permissions remain separate."
     },
     {
       "id": "R23",
@@ -612,8 +628,8 @@
       "round": 5,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "GUI supports drag/drop, file/directory pickers, queue, pause, cancel, resume and history.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/app/application.cpp",
         "src/gui/main.cpp",
@@ -625,7 +641,8 @@
         "tests/cli_arguments_tests.cpp",
         "docs/windows_test_plan.md"
       ],
-      "test_evidence_kind": "source_locations_not_pass_claims"
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "GUI has queued input names for one current batch, drag/drop/pickers, control actions and available history. This is not a multi-job service. Durable resume applies to overwrite; Quick continuation is limited to its live staged job."
     },
     {
       "id": "R24",
@@ -633,8 +650,8 @@
       "round": 5,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Show file/batch progress, throughput, ETA, failure counts and device statistics.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/app/application.cpp",
         "src/gui/main.cpp",
@@ -646,7 +663,8 @@
         "tests/cli_arguments_tests.cpp",
         "docs/windows_test_plan.md"
       ],
-      "test_evidence_kind": "source_locations_not_pass_claims"
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Progress is mode-specific: overwrite supplies write/verify bytes, rates and estimates; Quick supplies namespace counters, observed rates and allocation/free-space hints. Compact Quick reports page disk outcomes; an empty resident targets vector does not mean no targets or no failures."
     },
     {
       "id": "R25",
@@ -654,8 +672,8 @@
       "round": 5,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Emit JSONL with stable event codes, Win32/NTSTATUS context and path masking.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/windows/state_store.cpp",
         "src/modules/state_store.ixx",
@@ -671,7 +689,7 @@
         "tests/state_store_windows_tests.cpp"
       ],
       "test_evidence_kind": "source_locations_not_pass_claims",
-      "scope_note": "Win32 APIs report native Win32 codes; VSS reports HRESULT. No NTSTATUS is fabricated for APIs that do not expose it."
+      "scope_note": "Win32/HRESULT values are retained where available; no fabricated NTSTATUS is claimed. Retained engine event logs and GUI diagnostic snapshots mask paths. Explicitly requested private CLI manifests/reports can contain paths and have a distinct disclosure scope; compact stdout is not the full audit report."
     },
     {
       "id": "R26",
@@ -679,8 +697,8 @@
       "round": 6,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Use a currently supported MSVC toolchain discovered in VS2022 or VS2026 installations.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "CMakeLists.txt",
         "scripts/build_windows.ps1",
@@ -700,8 +718,8 @@
       "round": 6,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Prefer Ninja/CMake and verified C++ named modules.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "CMakeLists.txt",
         "scripts/build_windows.ps1",
@@ -731,8 +749,8 @@
       "round": 6,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Use /std:c++latest; rely only on compiler/library facilities demonstrated to work.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "CMakeLists.txt",
         "scripts/build_windows.ps1",
@@ -753,8 +771,8 @@
       "round": 6,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Release only with /O2 /GL /LTCG /MT; enable PGO only after supported testing.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "CMakeLists.txt",
         "scripts/build_windows.ps1",
@@ -775,8 +793,8 @@
       "round": 6,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Maintain x64 baseline compatibility and dispatch CPU-specific operations at runtime.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "CMakeLists.txt",
         "scripts/build_windows.ps1",
@@ -797,8 +815,8 @@
       "round": 6,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "BAT/CMake automatically discover PATH tools first, then regular MSVC/SDK/tool installation paths.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "CMakeLists.txt",
         "scripts/build_windows.ps1",
@@ -818,8 +836,8 @@
       "round": 6,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Pin dependency versions and hashes and support cached/offline rebuilds.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "dependencies.lock.json",
         "cmake/verify_dependencies.cmake",
@@ -836,8 +854,8 @@
       "round": 6,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Use UTF-8 BOM for authored source; honor standard-format UTF-8 exceptions; deliver Source ZIP.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "scripts/package.py",
         "scripts/validate.py",
@@ -854,8 +872,8 @@
       "round": 7,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Validate Windows 10 1809 and representative Windows 10/11 builds; distinguish expected from tested support.",
-      "implementation_status": "gate_and_fixture_sources_provided_owner_execution_pending",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "gate_and_fixture_sources_recorded_matrix_incomplete",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "docs/windows_test_plan.md",
         "scripts/validate.py",
@@ -870,7 +888,7 @@
         "tests/state_store_windows_tests.cpp"
       ],
       "test_evidence_kind": "source_locations_not_pass_claims",
-      "scope_note": "All requested Windows versions are expected targets until actual OS build evidence is supplied."
+      "scope_note": "Historical Windows 10/1809 scope is superseded by the owner-approved Windows 11+ x64 target, minimum build 22000, in spec/project.json. Hosted Server 2025 CI is separately scoped native evidence, not proof that every targeted Windows 11 build or toolchain combination passed."
     },
     {
       "id": "R35",
@@ -878,8 +896,8 @@
       "round": 7,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Maintain a filesystem and HDD/SSD/USB capability/test matrix; downgrade or reject unsupported cases.",
-      "implementation_status": "gate_and_fixture_sources_provided_owner_execution_pending",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "gate_and_fixture_sources_recorded_matrix_incomplete",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/windows/windows_backend.cpp",
         "src/modules/model.ixx",
@@ -897,7 +915,7 @@
         "tests/portable_integration_tests.cpp"
       ],
       "test_evidence_kind": "source_locations_not_pass_claims",
-      "scope_note": "Virtual, remote, unknown and multi-disk volume topologies currently fail closed. Physical HDD/SSD/USB tests remain required."
+      "scope_note": "The physical HDD/SSD/USB and NTFS/ReFS/FAT32/exFAT matrix remains incomplete. Overwrite rejects unsupported virtual/remote/unknown/multi-disk storage evidence. Quick still requires supported local filesystem/protection/identity checks but can conservatively group unknown physical topology; it makes no overwrite assurance."
     },
     {
       "id": "R36",
@@ -905,8 +923,8 @@
       "round": 7,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Grade outcomes by verifiable evidence, residual risks and incomplete operations.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/modules/model.ixx",
         "src/modules/platform.ixx",
@@ -927,7 +945,8 @@
         "tests/portable_integration_tests.cpp",
         "tests/cli_arguments_tests.cpp"
       ],
-      "test_evidence_kind": "source_locations_not_pass_claims"
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Logical namespace deletion, verified overwrite, residual risk and partial/unknown completion are distinct outcomes. Shared blocks, hard links, open handles and other activity mean observed allocation/free-space changes are not attributable reclaimed-byte guarantees."
     },
     {
       "id": "R37",
@@ -935,57 +954,8 @@
       "round": 7,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Run fault and destructive tests only on dedicated test data/VMs/disposable media.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
-      "implementation": [
-        "docs/windows_test_plan.md",
-        "scripts/validate.py",
-        "scripts/package.py",
-        "build_release.bat",
-        "scripts/build_windows.ps1"
-      ],
-      "test_evidence": [
-        "tests/engine_tests.cpp",
-        "tests/portable_integration_tests.cpp",
-        "tests/windows_backend_tests.cpp",
-        "tests/state_store_windows_tests.cpp"
-      ],
-      "test_evidence_kind": "source_locations_not_pass_claims"
-    },
-    {
-      "id": "R38",
-      "number": 38,
-      "round": 7,
-      "authority_status": "recovered_numbered_decision_summary",
-      "approved_text": "System-resource protection is fail-closed: uncertainty rejects the target.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
-      "implementation": [
-        "src/windows/windows_backend.cpp",
-        "src/modules/model.ixx",
-        "src/modules/platform.ixx",
-        "src/modules/plan.ixx",
-        "src/modules/engine.ixx",
-        "src/core/engine.cpp",
-        "src/core/plan.cpp",
-        "src/core/engine_admission.cpp",
-        "src/core/engine_execution.cpp"
-      ],
-      "test_evidence": [
-        "tests/windows_backend_tests.cpp",
-        "tests/engine_tests.cpp",
-        "tests/portable_integration_tests.cpp"
-      ],
-      "test_evidence_kind": "source_locations_not_pass_claims"
-    },
-    {
-      "id": "R39",
-      "number": 39,
-      "round": 7,
-      "authority_status": "recovered_numbered_decision_summary",
-      "approved_text": "Release needs all required tests passing; incomplete platform compatibility validation permits only RC.",
-      "implementation_status": "gate_and_fixture_sources_provided_owner_execution_pending",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "docs/windows_test_plan.md",
         "scripts/validate.py",
@@ -1000,39 +970,16 @@
         "tests/state_store_windows_tests.cpp"
       ],
       "test_evidence_kind": "source_locations_not_pass_claims",
-      "scope_note": "Current distribution is unpublished development test source. Owner-returned Windows build/test evidence and review are required before RC or Release publication; missing native evidence stays not_run."
+      "scope_note": "Native destructive fixtures create isolated disposable data and are opt-in; CI passed four isolated suites at the recorded source. This does not authorize cleanup of repository/user data or substitute for the remaining physical-media matrix."
     },
     {
-      "id": "R40",
-      "number": 40,
+      "id": "R38",
+      "number": 38,
       "round": 7,
       "authority_status": "recovered_numbered_decision_summary",
-      "approved_text": "Deliver source ZIP, build scripts, locked dependencies, tests and machine-readable acceptance evidence.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
-      "implementation": [
-        "docs/windows_test_plan.md",
-        "scripts/validate.py",
-        "scripts/package.py",
-        "build_release.bat",
-        "scripts/build_windows.ps1"
-      ],
-      "test_evidence": [
-        "tests/engine_tests.cpp",
-        "tests/portable_integration_tests.cpp",
-        "tests/windows_backend_tests.cpp",
-        "tests/state_store_windows_tests.cpp"
-      ],
-      "test_evidence_kind": "source_locations_not_pass_claims"
-    },
-    {
-      "id": "R41",
-      "number": 41,
-      "round": 8,
-      "authority_status": "recovered_numbered_decision_summary",
-      "approved_text": "Revalidate handles, volume/file identity and attributes; reject inconsistent targets.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "approved_text": "System-resource protection is fail-closed: uncertainty rejects the target.",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/windows/windows_backend.cpp",
         "src/modules/model.ixx",
@@ -1049,7 +996,83 @@
         "tests/engine_tests.cpp",
         "tests/portable_integration_tests.cpp"
       ],
-      "test_evidence_kind": "source_locations_not_pass_claims"
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Unknown identity or system-protection evidence rejects mutation. Unknown Quick scheduling topology is an optimization uncertainty handled by conservative grouping, not unknown protection status; overwrite storage capability rules are stricter."
+    },
+    {
+      "id": "R39",
+      "number": 39,
+      "round": 7,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Release needs all required tests passing; incomplete platform compatibility validation permits only RC.",
+      "implementation_status": "gate_and_fixture_sources_recorded_matrix_incomplete",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
+      "implementation": [
+        "docs/windows_test_plan.md",
+        "scripts/validate.py",
+        "scripts/package.py",
+        "build_release.bat",
+        "scripts/build_windows.ps1"
+      ],
+      "test_evidence": [
+        "tests/engine_tests.cpp",
+        "tests/portable_integration_tests.cpp",
+        "tests/windows_backend_tests.cpp",
+        "tests/state_store_windows_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Normal owner evidence/review gates remain. Published Latest v2.0.0 is the explicit first-distribution owner exception in docs/publication.md, not a claim that pending CLI/hardware cases passed and not authorization for a later Release."
+    },
+    {
+      "id": "R40",
+      "number": 40,
+      "round": 7,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Deliver source ZIP, build scripts, locked dependencies, tests and machine-readable acceptance evidence.",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
+      "implementation": [
+        "docs/windows_test_plan.md",
+        "scripts/validate.py",
+        "scripts/package.py",
+        "build_release.bat",
+        "scripts/build_windows.ps1"
+      ],
+      "test_evidence": [
+        "tests/engine_tests.cpp",
+        "tests/portable_integration_tests.cpp",
+        "tests/windows_backend_tests.cpp",
+        "tests/state_store_windows_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Source packaging supplies an exact-commit archive, manifest/checksums and build/test sources; runtime acceptance artifacts remain external, not tracked per-run reports. The published v2.0.0 runtime ZIP is a different deliverable containing unchanged owner EXEs, instructions, Skill, schemas and licenses; source/build/test files remain in Git."
+    },
+    {
+      "id": "R41",
+      "number": 41,
+      "round": 8,
+      "authority_status": "recovered_numbered_decision_summary",
+      "approved_text": "Revalidate handles, volume/file identity and attributes; reject inconsistent targets.",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
+      "implementation": [
+        "src/windows/windows_backend.cpp",
+        "src/modules/model.ixx",
+        "src/modules/platform.ixx",
+        "src/modules/plan.ixx",
+        "src/modules/engine.ixx",
+        "src/core/engine.cpp",
+        "src/core/plan.cpp",
+        "src/core/engine_admission.cpp",
+        "src/core/engine_execution.cpp"
+      ],
+      "test_evidence": [
+        "tests/windows_backend_tests.cpp",
+        "tests/engine_tests.cpp",
+        "tests/portable_integration_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Both modes validate held selected-name identity and safety state before mutation. Overwrite also binds streams, sizes, timestamps and capabilities; Quick has no payload-stream verification requirement. Same-path replacements are rejected, not adopted."
     },
     {
       "id": "R42",
@@ -1057,8 +1080,8 @@
       "round": 8,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Before resume, validate identity, size, streams, timestamps and checkpoint state.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/modules/model.ixx",
         "src/modules/platform.ixx",
@@ -1082,7 +1105,8 @@
         "tests/portable_integration_tests.cpp",
         "tests/state_store_windows_tests.cpp"
       ],
-      "test_evidence_kind": "source_locations_not_pass_claims"
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Durable overwrite resume revalidates checkpoint metadata and saved written prefixes; possible post-verification TRIM causes a fresh full overwrite/verification before completion. Quick has only the separately bound live-session continuation contract."
     },
     {
       "id": "R43",
@@ -1090,8 +1114,8 @@
       "round": 8,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Temporarily adjust attributes only on approved non-system targets and restore them where possible.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/windows/windows_backend.cpp",
         "src/modules/model.ixx",
@@ -1109,7 +1133,7 @@
         "tests/portable_integration_tests.cpp"
       ],
       "test_evidence_kind": "source_locations_not_pass_claims",
-      "scope_note": "Readonly adjustment/restoration is handle-bound and checkpoint snapshots restore attributes before persistence; Windows runtime evidence pending."
+      "scope_note": "Readonly adjustment/restoration is handle-bound. Overwrite checkpoint snapshots restore attributes before persistence. Native fixture sources cover restoration and self-protection cases; their hosted execution scope does not establish every filesystem/hardware behavior."
     },
     {
       "id": "R44",
@@ -1117,8 +1141,8 @@
       "round": 8,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Deduplicate by identity and do not overwrite hard-link shared data.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/windows/windows_backend.cpp",
         "src/modules/model.ixx",
@@ -1136,7 +1160,7 @@
         "tests/portable_integration_tests.cpp"
       ],
       "test_evidence_kind": "source_locations_not_pass_claims",
-      "scope_note": "Multiple selected aliases collapse to one deterministic namespace. Remaining aliases survive, are reported, and can leave selected directories nonempty."
+      "scope_note": "Overwrite keeps identity deduplication: multiple selected aliases collapse to one deterministic name, remaining aliases survive with reported risk and can keep directories nonempty. The later Quick namespace amendment retains different selected hard-link names as separate deletions, deduplicates repeated names and never overwrites shared data."
     },
     {
       "id": "R45",
@@ -1144,8 +1168,8 @@
       "round": 8,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Analyze special-file capabilities, then choose overwrite, explicitly authorized downgrade deletion, or refusal with evidence.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/windows/windows_backend.cpp",
         "src/modules/model.ixx",
@@ -1162,7 +1186,8 @@
         "tests/engine_tests.cpp",
         "tests/portable_integration_tests.cpp"
       ],
-      "test_evidence_kind": "source_locations_not_pass_claims"
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Applies to overwrite capability handling; compressed/sparse/encrypted/ReFS/shared-link states may require explicit delete-only grants or refusal. Quick is a separately selected logical-delete mode, not an automatic downgrade from overwrite."
     },
     {
       "id": "R46",
@@ -1170,8 +1195,8 @@
       "round": 8,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "On storage-device or filesystem fault, stop affected device work and retain isolated diagnostics.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/modules/model.ixx",
         "src/modules/platform.ixx",
@@ -1192,7 +1217,8 @@
         "tests/portable_integration_tests.cpp",
         "tests/cli_arguments_tests.cpp"
       ],
-      "test_evidence_kind": "source_locations_not_pass_claims"
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Detected storage faults stop affected-device work and retain diagnostics. Quick may stop the whole job when shared staging/audit/resource evidence becomes unreliable; this can follow completed deletions and must remain partial/unknown, not a pre-mutation refusal claim."
     },
     {
       "id": "R47",
@@ -1200,8 +1226,8 @@
       "round": 9,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Overwrite/verify accessible resident data streams; report historical MFT/journal remnants as unguaranteed.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/windows/windows_backend.cpp",
         "src/modules/model.ixx",
@@ -1219,7 +1245,7 @@
         "tests/portable_integration_tests.cpp"
       ],
       "test_evidence_kind": "source_locations_not_pass_claims",
-      "scope_note": "Logical accessible resident streams are covered; historical filesystem records and journal entries are not sanitized."
+      "scope_note": "Overwrite covers accessible admitted logical streams, including resident streams; historical filesystem records/journal entries are not sanitized. Quick performs no payload overwrite."
     },
     {
       "id": "R48",
@@ -1227,8 +1253,8 @@
       "round": 9,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Use versioned built-in protection rules plus runtime identification; reject unknown protection status.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/windows/windows_backend.cpp",
         "src/modules/model.ixx",
@@ -1245,7 +1271,8 @@
         "tests/engine_tests.cpp",
         "tests/portable_integration_tests.cpp"
       ],
-      "test_evidence_kind": "source_locations_not_pass_claims"
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Runtime-protected image inventory includes exact running EXE/module paths and file identities, with containing directory protection; unrelated siblings are allowed. Failure to resolve mandatory protection evidence refuses mutation. OS/service/boot/private-state policies remain independent."
     },
     {
       "id": "R49",
@@ -1253,8 +1280,8 @@
       "round": 9,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Force-terminate only clearly identified, unprotected user processes, with confirmation for each process.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/windows/backend_locks.cpp",
         "src/app/application.cpp",
@@ -1266,7 +1293,8 @@
         "tests/windows_backend_tests.cpp",
         "docs/windows_test_plan.md"
       ],
-      "test_evidence_kind": "source_locations_not_pass_claims"
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Forced termination uses a fresh target key, PID, creation time and image binding and rejects protected/uncertain processes. Neither ordinary batch authorization nor Quick automatic recovery is force permission. CLI requires an independent force flag; GUI requires the separate action confirmation."
     },
     {
       "id": "R50",
@@ -1274,8 +1302,8 @@
       "round": 9,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Checkpoint storage requires integrity, restricted access, atomic updates and version compatibility.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/windows/state_store.cpp",
         "src/modules/state_store.ixx",
@@ -1291,7 +1319,7 @@
         "tests/state_store_windows_tests.cpp"
       ],
       "test_evidence_kind": "source_locations_not_pass_claims",
-      "scope_note": "DPAPI provides authenticated protection, not anti-rollback against the same principal/SYSTEM. Fresh consent, identity checks and content verification still apply."
+      "scope_note": "Overwrite DPAPI state has integrity protection, restricted access, atomic replacement and schema checks, not anti-rollback against the same principal/SYSTEM. Fresh consent, identity checks and content verification still apply. Quick protected scratch is live-session storage, not a durable imported checkpoint."
     },
     {
       "id": "R51",
@@ -1299,8 +1327,8 @@
       "round": 9,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Downgrade deletion needs extra confirmation, including a separate CLI authorization.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/modules/model.ixx",
         "src/modules/platform.ixx",
@@ -1319,7 +1347,8 @@
         "tests/engine_tests.cpp",
         "tests/cli_arguments_tests.cpp"
       ],
-      "test_evidence_kind": "source_locations_not_pass_claims"
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Applies to overwrite delete-only fallback. Separate per-target capability grants are required by CLI/GUI; selecting Quick explicitly is a different authorized logical-delete workflow, not a silent downgrade."
     },
     {
       "id": "R52",
@@ -1327,8 +1356,8 @@
       "round": 9,
       "authority_status": "recovered_numbered_decision_summary",
       "approved_text": "Do not modify snapshots or backups; detect identifiable retained-copy risks and report them.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/windows/retained_copies.cpp",
         "src/modules/retained_copies.ixx",
@@ -1342,7 +1371,7 @@
         "docs/windows_test_plan.md"
       ],
       "test_evidence_kind": "source_locations_not_pass_claims",
-      "scope_note": "Read-only completed VSS snapshot inventory is explicit complete/count/error; provider failure is unknown, not zero. Arbitrary/offline/cloud backups cannot be inventoried completely."
+      "scope_note": "Overwrite performs read-only completed VSS snapshot inventory with explicit complete/count/error; provider failure is unknown, not zero. Quick does not run that inventory. Neither mode removes snapshots/backups or completely inventories arbitrary offline/cloud copies."
     },
     {
       "id": "R53",
@@ -1350,38 +1379,8 @@
       "round": 10,
       "authority_status": "direct_user_text",
       "approved_text": "Freeze the target set during preview; revalidate identity at execution; never process additions or replacements.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
-      "implementation": [
-        "src/modules/model.ixx",
-        "src/modules/platform.ixx",
-        "src/modules/plan.ixx",
-        "src/modules/engine.ixx",
-        "src/core/engine.cpp",
-        "src/core/plan.cpp",
-        "src/core/engine_admission.cpp",
-        "src/core/engine_execution.cpp",
-        "src/windows/windows_backend.cpp",
-        "src/app/application.cpp",
-        "src/gui/main.cpp",
-        "src/cli/main.cpp",
-        "src/app/cli_arguments.cpp"
-      ],
-      "test_evidence": [
-        "tests/engine_tests.cpp",
-        "tests/portable_integration_tests.cpp",
-        "tests/cli_arguments_tests.cpp"
-      ],
-      "test_evidence_kind": "source_locations_not_pass_claims"
-    },
-    {
-      "id": "R54",
-      "number": 54,
-      "round": 10,
-      "authority_status": "direct_user_text",
-      "approved_text": "List downgrade targets and obtain independent preview authorization; reconfirm changed execution capabilities.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/modules/model.ixx",
         "src/modules/platform.ixx",
@@ -1403,7 +1402,38 @@
         "tests/cli_arguments_tests.cpp"
       ],
       "test_evidence_kind": "source_locations_not_pass_claims",
-      "scope_note": "Execution capability changes reject the old approval and require repreview/fresh explicit consent; no silent downgrade."
+      "scope_note": "GUI preview and protected overwrite resume keep their exact frozen plan. The later CLI run contract can prepare and execute a newly authorized scoped manifest in one invocation, but completes freezing before any mutation; a prior Quick scan is advisory rather than execution/retry authority. No execution adds or substitutes targets."
+    },
+    {
+      "id": "R54",
+      "number": 54,
+      "round": 10,
+      "authority_status": "direct_user_text",
+      "approved_text": "List downgrade targets and obtain independent preview authorization; reconfirm changed execution capabilities.",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
+      "implementation": [
+        "src/modules/model.ixx",
+        "src/modules/platform.ixx",
+        "src/modules/plan.ixx",
+        "src/modules/engine.ixx",
+        "src/core/engine.cpp",
+        "src/core/plan.cpp",
+        "src/core/engine_admission.cpp",
+        "src/core/engine_execution.cpp",
+        "src/windows/windows_backend.cpp",
+        "src/app/application.cpp",
+        "src/gui/main.cpp",
+        "src/cli/main.cpp",
+        "src/app/cli_arguments.cpp"
+      ],
+      "test_evidence": [
+        "tests/engine_tests.cpp",
+        "tests/portable_integration_tests.cpp",
+        "tests/cli_arguments_tests.cpp"
+      ],
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Overwrite capability changes reject the old approval and require repreview/fresh explicit consent; no silent downgrade. Quick is separately authorized as logical deletion and does not reuse an overwrite downgrade grant."
     },
     {
       "id": "R55",
@@ -1411,8 +1441,8 @@
       "round": 10,
       "authority_status": "direct_user_text",
       "approved_text": "Use a bounded reproducible cryptographic data stream; protect sensitive state and verify its integrity.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/core/crypto.cpp",
         "src/modules/crypto.ixx",
@@ -1435,7 +1465,8 @@
         "tests/codec_tests.cpp",
         "tests/state_store_windows_tests.cpp"
       ],
-      "test_evidence_kind": "source_locations_not_pass_claims"
+      "test_evidence_kind": "source_locations_not_pass_claims",
+      "scope_note": "Overwrite uses Windows cryptographic randomness, reproducible ChaCha20 data and domain-separated segment derivation for 64-bit offsets. Protected checkpoints contain keys/nonces/cursors; full verification regenerates expected content. Quick has no overwrite random-data requirement."
     },
     {
       "id": "R56",
@@ -1443,8 +1474,8 @@
       "round": 10,
       "authority_status": "direct_user_text",
       "approved_text": "Restrict log/checkpoint access, allow configurable retention, remove completed checkpoints and rotate logs by policy.",
-      "implementation_status": "implemented_source_pending_windows_validation",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "source_locations_recorded",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "src/windows/state_store.cpp",
         "src/modules/state_store.ixx",
@@ -1460,7 +1491,7 @@
         "tests/state_store_windows_tests.cpp"
       ],
       "test_evidence_kind": "source_locations_not_pass_claims",
-      "scope_note": "Default incomplete checkpoint retention is unlimited until completion/explicit expiry; logs default30days,4MiB x8. ACL is not a boundary against a compromised same user/SYSTEM."
+      "scope_note": "Incomplete overwrite checkpoints default to no expiry until completion or explicitly configured expiry; logs default to 30 days and eight 4 MiB files. Quick scratch disappears when its live owner closes; durable external reports have a separate lifecycle. ACLs are not a boundary against a compromised same user/SYSTEM."
     },
     {
       "id": "R57",
@@ -1468,8 +1499,8 @@
       "round": 10,
       "authority_status": "direct_user_text",
       "approved_text": "All necessary unit/integration/isolated destructive tests must pass; without platform measurements deliver at most RC.",
-      "implementation_status": "gate_and_fixture_sources_provided_owner_execution_pending",
-      "validation_status": "see_current_machine_report_native_windows_not_run",
+      "implementation_status": "gate_and_fixture_sources_recorded_matrix_incomplete",
+      "validation_status": "scoped_evidence_available_acceptance_incomplete",
       "implementation": [
         "docs/windows_test_plan.md",
         "scripts/validate.py",
@@ -1484,11 +1515,57 @@
         "tests/state_store_windows_tests.cpp"
       ],
       "test_evidence_kind": "source_locations_not_pass_claims",
-      "scope_note": "Unit/portable integration evidence is generated locally; mandatory native isolated and media matrix tests remain owner-run gates."
+      "scope_note": "Hosted native CI at the recorded source passed 11 safe and four isolated suites plus source packaging; per-case gaps and the full owner hardware/CLI matrix remain pending. Published v2.0.0 follows only the explicit first-distribution exception; normal later-version gates are unchanged."
     }
   ],
   "module_architecture_revision": "2.0.0-dev.1",
   "current_amendment": "spec/project.json",
   "current_validation_location": "CI artifacts and release evidence, never a tracked per-run report",
-  "current_cleanup_amendment": "spec/quick_cleanup.json"
+  "current_cleanup_amendment": "spec/quick_cleanup.json",
+  "interpretation": {
+    "approved_text": "Preserved historical decision text; current scope notes and later explicit owner amendments explain superseded platform/interface contracts without removing the decision.",
+    "implementation_status": "source_locations_recorded is a traceability statement, not a claim that every approved behavior or platform has passed acceptance.",
+    "validation_status": "scoped_evidence_available_acceptance_incomplete refers to the current evidence summary; listed test files are sources, not per-requirement pass results.",
+    "scope_precedence": [
+      "spec/project.json",
+      "spec/quick_cleanup.json",
+      "docs/publication.md"
+    ],
+    "performance": "Adaptive algorithms are implemented heuristics. Alignment/device tuning and hardware-optimal throughput remain measurement targets, not verified guarantees."
+  },
+  "current_validation_scope": {
+    "reference": "spec/project.json",
+    "test_matrix": "docs/windows_test_plan.md",
+    "owner": "GUI quick-deletion and overwrite smoke reported successful; CLI Agent acceptance and full hardware matrix pending.",
+    "native_ci": "Run 38778771188 at source 2b552ba92c9e81cb1ef4b8101619993677b5548a passed 11 safe suites, four isolated suites and source packaging on hosted Windows Server 2025, MSVC 19.51.36260.0, SDK 10.0.26100.0.",
+    "limits": "Hosted CI does not execute or attest the owner-supplied Release EXEs, desktop GUI or all Windows/filesystem/device combinations. Individual unexecuted cases remain pending even when their containing suite passes.",
+    "publication": "Latest Release v2.0.0 is published under the explicit first-distribution owner exception. Owner EXE bytes still report 2.0.0-dev.1 and have no independently attested source-to-binary commit binding. Normal gates continue for later versions."
+  },
+  "current_workflow_sources": {
+    "quick_implementation": [
+      "src/modules/quick_delete.ixx",
+      "src/modules/quick_feedback.ixx",
+      "src/modules/quick_store.ixx",
+      "src/core/quick_delete.cpp",
+      "src/core/quick_store.cpp",
+      "src/windows/windows_backend.cpp",
+      "src/windows/state_store.cpp",
+      "src/app/application.cpp",
+      "src/cli/main.cpp",
+      "src/gui/main.cpp"
+    ],
+    "quick_test_sources": [
+      "tests/quick_delete_tests.cpp",
+      "tests/quick_delete_integration_tests.cpp",
+      "tests/quick_store_tests.cpp",
+      "tests/quick_delete_windows_tests.cpp"
+    ],
+    "interface_test_sources": [
+      "tests/agent_protocol_tests.cpp",
+      "tests/cli_arguments_tests.cpp",
+      "tests/application_diagnostics_tests.cpp",
+      "tests/agent_cli_windows_tests.ps1"
+    ],
+    "interpretation": "These current Quick/interface sources supplement the historical per-decision overwrite paths below; test source presence does not establish complete acceptance."
+  }
 }

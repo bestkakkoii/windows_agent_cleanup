@@ -50,13 +50,25 @@
       "notes": ""
     },
     {
+      "id": "agent_cli_windows_isolated",
+      "status": "not_run",
+      "evidence_files": [],
+      "notes": ""
+    },
+    {
       "id": "windows_backend_isolated",
       "status": "not_run",
       "evidence_files": [],
       "notes": ""
     },
     {
-      "id": "state_store_isolated",
+      "id": "state_store_windows_isolated",
+      "status": "not_run",
+      "evidence_files": [],
+      "notes": ""
+    },
+    {
+      "id": "quick_delete_windows_isolated",
       "status": "not_run",
       "evidence_files": [],
       "notes": ""
@@ -69,6 +81,30 @@
     },
     {
       "id": "cli_integration",
+      "status": "not_run",
+      "evidence_files": [],
+      "notes": ""
+    },
+    {
+      "id": "deterministic_console_cancellation",
+      "status": "not_run",
+      "evidence_files": [],
+      "notes": ""
+    },
+    {
+      "id": "successful_force_termination",
+      "status": "not_run",
+      "evidence_files": [],
+      "notes": ""
+    },
+    {
+      "id": "overwrite_media_validation",
+      "status": "not_run",
+      "evidence_files": [],
+      "notes": ""
+    },
+    {
+      "id": "supported_storage_overwrite_cases",
       "status": "not_run",
       "evidence_files": [],
       "notes": ""
@@ -218,5 +254,65 @@
   "std_module_provider_path": null,
   "std_module_provider_sha256": null,
   "actual_cxx_standard_flag": null,
-  "source_commit": null
+  "source_commit": null,
+  "template_notes": [
+    "Blank owner evidence template, not a completed result. Copy for each revision/environment and leave unexecuted cases not_run.",
+    "Record evidence origin and artifact role. Owner-supplied binaries, a rebuilt source checkout and CI outputs are distinct artifacts; never infer source-to-binary provenance from a version label.",
+    "A suite pass is separate from its case coverage. Copy both result.json coverage_gaps and JUnit/stdout not_run arrays; retain unsupported_expected only when the observed refusal matches the stated capability policy.",
+    "Repeat device/filesystem cases for the actual tested matrix. A hosted Windows Server run is not evidence for the Windows 11 client or physical device matrix.",
+    "Keep raw logs and completed evidence outside Git. Null values mean unrecorded, not passed."
+  ],
+  "recorded_at_utc": null,
+  "evidence_origin": null,
+  "os_name": null,
+  "ci_url": null,
+  "runner_image": null,
+  "source_worktree_clean": null,
+  "tested_artifacts": [],
+  "source_to_binary_binding": {
+    "status": "not_verified",
+    "evidence_files": [],
+    "notes": ""
+  },
+  "build_invocation": {
+    "command": null,
+    "effective_token": null,
+    "build_state": null,
+    "tool_cache_reused": null,
+    "dependency_cache_reused": null,
+    "exit_code": null
+  },
+  "dependency_lock_sha256": null,
+  "cmake_source_commit": null,
+  "ninja_source_commit": null,
+  "toolchain_receipt_sha256": null,
+  "suite_results": {
+    "safe": {
+      "status": "not_run",
+      "tests": null,
+      "failures": null,
+      "skipped": null,
+      "junit_file": null,
+      "coverage_gaps": [],
+      "stdout_not_run_cases": []
+    },
+    "isolated_destructive": {
+      "status": "not_run",
+      "tests": null,
+      "failures": null,
+      "skipped": null,
+      "junit_file": null,
+      "coverage_gaps": [],
+      "stdout_not_run_cases": []
+    }
+  },
+  "build_result_file": null,
+  "events_file": null,
+  "embedded_manifest_evidence_files": [],
+  "test_statuses": {
+    "not_run": "No execution evidence for this case; an unavailable fixture does not satisfy a required case.",
+    "passed": "The stated case ran and its expected observations passed; cite the actual command/fixture/output.",
+    "failed": "The case ran and a required observation failed.",
+    "unsupported_expected": "The capability is explicitly unsupported and the required refusal was observed; this is not a successful deletion/overwrite pass."
+  }
 }

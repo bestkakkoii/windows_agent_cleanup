@@ -1,60 +1,68 @@
 ﻿# Publication policy
 
-Current status: unpublished development test source, `2.0.0-dev.1`.
+Current distribution: [v2.0.0](https://github.com/bestkakkoii/windows_agent_cleanup/releases/tag/v2.0.0),
+published as the repository's Latest Release on 2026-10-16 (Asia/Taipei).
+The canonical artifact name, hashes, source references and publication receipt
+are in [spec/project.json](../spec/project.json). The application and CI
+source-artifact version remain `2.0.0-dev.1`; the unchanged GUI also retains its
+original development-build footer. These labels describe the supplied build,
+not the publication state of the distribution.
 
 ## Owner-directed first public distribution
 
-On 2026-10-16 (Asia/Taipei), the owner reported successful GUI quick deletion
-and verified overwrite, supplied both compiled executables, and explicitly
-requested a normal GitHub Release before subsequent Agent-driven CLI testing.
-For distribution `v2.0.0`, that newer instruction supersedes the prior rule
-withholding a full Release until the complete platform matrix is available.
-It is publication authorization, not evidence that pending tests have passed.
+The owner supplied both compiled executables, reported successful GUI quick
+and verified-overwrite smoke tests, and explicitly requested a formal GitHub
+Release before subsequent Agent-driven CLI testing. For this first `v2.0.0`
+distribution, that instruction superseded the prior full-platform-matrix gate.
+It authorized publication; it did not establish that pending tests had passed.
 
-Publish the exact supplied GUI and CLI bytes, with their SHA-256 values.
-The application still reports `2.0.0-dev.1`; do not modify PE bytes or rebuild
-substitute executables to change that label. The source distribution includes
-the subsequent unified build-and-test launcher. Its C++ runtime sources remain
-unchanged from `479c3aa44cc918ec09a4c50a8a799ad1c89d9d0d`.
-No independently authenticated source-to-owner-binary commit binding was
-provided; identify the binaries as owner supplied rather than reproducibly
-attested outputs of the release source checkout.
+The published ZIP preserves the exact owner-supplied EXE bytes and records their
+SHA-256 values. It contains runtime instructions, the complete Skill, operational
+schemas and licenses. Application source, build scripts and tests are excluded
+from that binary ZIP and remain in Git. GitHub also generates its normal source
+ZIP/tar downloads from the tag; those are separate from the binary asset.
 
-Release notes must retain the pending CLI Agent acceptance, untested hardware
-matrix, and native fixture coverage gaps. In particular, cloud runs which
-cannot identify storage media do not validate successful overwrite on that
-media. The authorization above is specific to this first public distribution;
-it does not authorize later publication or fabricated acceptance evidence.
-The general gates below remain the default for subsequent versions. CI still
-produces development evidence and cannot authorize publication itself.
+The release source reference includes the unified build-and-test launcher. Its
+C++ runtime sources are unchanged from `479c3aa44cc918ec09a4c50a8a799ad1c89d9d0d`.
+No independently authenticated source-to-owner-binary commit binding was supplied.
+A matching artifact hash identifies the received bytes; it is not a reproducible
+build attestation. Keep the source reference and binary provenance distinct.
+
+CLI Agent acceptance and the full Windows/storage hardware matrix remain pending.
+Hosted native CI establishes only its recorded fixture coverage. A passing suite
+can contain explicit `not_run` scenarios, including overwrite when the runner
+cannot identify storage media. See the [Windows acceptance plan](windows_test_plan.md).
+Do not infer physical NAND sanitization, instant space release or maximum speed.
+
+This publication exception applies only to the recorded first distribution.
+Later RC/Release publication requires a new owner authorization and the normal
+gates below. Do not replace an existing published asset silently. Documentation
+on `main` may be newer than the tagged bundle; a documentation commit does not
+update files already distributed in that published artifact.
+
+## Normal gates for later versions
 
 | Artifact | Gate | GitHub presentation |
 |---|---|---|
-| Development test Source ZIP | Exact committed sources, passing package checks and recorded runtime evidence | Actions artifact or private test handoff; no release/tag creation |
-| RC | Owner returns actual Windows build/test results; review binds evidence to the exact revision and archive hash, required suites pass, remaining coverage is explicitly scoped | Published prerelease after acceptance; never represented as a full Latest release |
-| Release | Owner-returned results reviewed; all applicable mandatory tests and claimed Windows/device/filesystem coverage pass, no blocking finding | Full published Release marked Latest, with verified source asset and checksum |
+| Development test Source ZIP | Exact clean committed sources, passing package checks and recorded runtime evidence | Actions artifact or private test handoff; no Release/tag creation |
+| RC | Owner-returned Windows build/test results reviewed against the exact source revision and tested artifact hash; necessary suites pass and remaining coverage is scoped | Published prerelease after separate approval; never presented as a full Latest Release |
+| Release | Owner-returned results reviewed; all applicable mandatory tests and claimed Windows/device/filesystem coverage pass, with no blocking finding | Published full Release marked Latest, with a binary-only runtime ZIP and checksum; sources remain separately available in Git |
 
-CI success is engineering evidence, not owner acceptance. Tags identify commits;
-they do not establish acceptance or create release assets. Commit-message markers
-have no publication authority. Current workflows do not create public releases.
+Retain the returned build logs, compiler/SDK identities, numeric Windows build,
+safe/isolated fixture results, relevant GUI/storage results, source revision and
+tested artifact hashes. Keep private raw evidence outside Git; publish sanitized
+scope and outcomes. Changed code requires review of affected gates; results from
+another revision are not evidence for those changes.
 
-Before any later publication, retain the returned build log, compiler/SDK and
-numeric Windows build identities, safe/isolated fixture results, manual GUI and
-storage results where applicable, exact source commit and tested archive SHA-256.
-Keep private raw evidence outside Git; publish only a sanitized evidence summary.
-A result for another revision does not validate changed code. Rebuild/retest the
-affected gates after fixes; scope any untested matrix honestly.
+CI success is engineering evidence, not owner acceptance or publication authority.
+Current workflows produce unpublished development test artifacts and do not
+create Releases. Their `publication_allowed=false` and development status fields
+apply to those CI artifacts, not to the separately authorized public v2.0.0
+binary distribution. Commit-message markers have no publication authority.
 
-The earlier `source-rc-1b5bb2d6e6a6` prerelease predates this owner gate and is
-withdrawn to a draft. Its tag and attached bytes are preserved for traceability.
-Withdrawal was verified by reading the draft state and unchanged tag/asset
-identities after the dedicated migration. The one-purpose migration workflow
-was then removed. No publication workflow remains.
-
-GitHub defines a full latest release separately from prereleases and drafts.
-Do not promote an unaccepted candidate merely to fill the repository’s Latest
-release display. Configure the repository’s Releases sidebar and mark Latest
-only when an accepted full Release exists.
+Tags identify source revisions. A published Release adds notes and assets; full
+Latest Releases are separate from drafts and prereleases. Confirm both the
+published state and the repository's Releases sidebar after an authorized release.
 
 References: [GitHub release API](https://docs.github.com/en/rest/releases/releases),
-[Windows acceptance plan](windows_test_plan.md), [current project contract](../spec/project.json).
+[Windows acceptance plan](windows_test_plan.md), [project contract](../spec/project.json).

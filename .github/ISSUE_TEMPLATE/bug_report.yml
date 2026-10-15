@@ -5,7 +5,8 @@ body:
   - type: input
     id: version
     attributes:
-      label: Version and source commit
+      label: Distribution version, application version and source reference
+      description: Include the downloaded archive SHA-256, or the tested source commit for your own build; the v2.0.0 owner binaries still report 2.0.0-dev.1.
     validations:
       required: true
   - type: input

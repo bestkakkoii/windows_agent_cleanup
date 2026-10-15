@@ -1,16 +1,47 @@
 ﻿# Contributing
 
-Read [AGENTS.md](AGENTS.md), the development route in [README_AI.md](README_AI.md#engineering-tasks), and the requirements relevant to the change. A development request does not authorize cleaning the repository or the contributor's working files.
+Read [AGENTS.md](AGENTS.md), the relevant approved requirements and the owning module contracts. Consult [design](docs/design.md) for cross-module work. The cleanup route in `README_AI.md` is not a required engineering read. A development request does not authorize cleaning the repository or the contributor's working files.
 
 ## Changes
 
 Keep work focused on an observable behavior. GUI and CLI use the same core; implement safety and scheduling rules there. Describe concrete before/after behavior, material tradeoffs, and the evidence collected. Keep the existing C++ module and naming conventions. Do not introduce another runtime or parallel scheduler without a demonstrated need.
+
+Preserve source formats: owned code/build files and regular documentation use strict UTF-8 with BOM; JSON/JSONL/YAML use UTF-8 without BOM; BAT is ASCII CRLF. `SKILL.md` frontmatter starts at byte zero without a BOM. Keep pinned upstream bytes unchanged. Windows build preflight checks owned code/build encoding; `scripts/validate.py` also checks documentation and format exceptions.
 
 Use disjoint ownership when delegating work. Internal handoffs should be concise technical English, point to exact files and contracts, and state checks, failures, and missing evidence. Read-only exploration can run in parallel; coordinate overlapping edits and cleanup.
 
 ## Validation
 
 Run the relevant static analysis, build diagnostics, and tests justified by risk and impact. Preserve strict diagnostics rather than hiding a warning to make CI green. Destructive tests use newly created, isolated fixtures only. Portable or stub-based checks do not establish Windows runtime behavior.
+
+From the source root, `build_release.bat` always configures/builds Release,
+checks embedded manifests and runs the safe suites. It does not require an
+administrator token for those tests. There is no separate validation BAT or
+`-mode` argument. For isolated destructive fixtures, run
+`build_release.bat -enable_isolated_destructive_tests` from an already elevated
+console; the switch does not elevate the build. It registers 4 isolated suites
+in addition to the current 11 Windows safe suites. A rerun is incremental; use a
+fresh checkout/build directory when claiming a clean build. Set
+`SECURE_ERASE_NO_PAUSE=1` in CMD automation if the final pause is unwanted.
+
+The bootstrap needs x64 Visual Studio C++ tools with vendor `import std`, a
+complete Windows SDK 10.0.22000.0+ and an installed/bootstrap CMake 3.15+.
+It builds the immutable CMake/Ninja snapshots from `dependencies.lock.json`
+into an ignored local cache. Installed Ninja is optional with MSVC `nmake`;
+network access is needed for missing sources/dependencies. Preserve the actual
+compiler mode, module provider, tool identities, `/MT` and no-PDB evidence.
+Clear inherited build-flag overrides rather than bypassing their rejection.
+See the [Windows test plan](docs/windows_test_plan.md) for discovery, clean-build,
+UTF-8, offline-cache and platform checks.
+
+For a source-only check with Python 3.11+, use
+`python scripts/validate.py --output-dir build/source_validation`.
+This checks source formats/module contracts and records runtime as `not_run`;
+it neither builds nor executes the native application without a supplied build
+directory. Keep `build_logs/<run_id>/` and actual JUnit results outside Git.
+A successful suite may still report untested cases in `coverage_gaps` or stdout
+`not_run` arrays. Record those gaps instead of treating the top-level result as
+complete platform acceptance.
 
 A performance change needs reproducible end-to-end measurements on regenerated fixtures. Include preparation, manifest handling, deletion, recovery and reporting; record hardware, filesystem, tool versions, concurrency and background interference. Do not submit an unexplained speed multiplier.
 
@@ -27,18 +58,28 @@ Only maintained source, configuration, small fixtures, scripts, docs, assets and
 CI builds pinned tools and native modules, runs safe and isolated fixtures, and
 packages unpublished development test sources bound to the exact commit and
 per-file hashes. `scripts/verify_package.py` checks archive integrity and evidence
-binding without extracting or executing it. Python 3.11+ is needed for packaging,
-not the native application or Windows build bootstrap.
+binding without extracting or executing it. That verifier applies to the development
+test Source ZIP format, not the published owner-binary ZIP or GitHub-generated
+source archives. `--offline-dependencies` includes pinned ImGui files, not prebuilt
+CMake/Ninja tools. Python 3.11+ is needed for packaging, not the native application
+or Windows build bootstrap.
 
-Follow [publication policy](docs/publication.md). Neither a passing CI run, a tag,
-nor a commit message authorizes RC or Release publication. Both require the
-owner’s returned Windows build/test evidence and a review tied to that exact
-revision. No workflow currently creates public releases. The historical
-premature prerelease is withdrawn to a draft while its tag and assets are kept.
+Follow [publication policy](docs/publication.md). For subsequent versions,
+neither a passing CI run, a tag, nor a commit message authorizes RC or Release
+publication. Both require owner-returned Windows evidence and review bound to
+the exact revision; full Release normally requires the claimed platform matrix.
+No workflow currently creates public releases.
+
+The owner explicitly authorized the formal Latest `v2.0.0` distribution on
+2026-10-16 (Asia/Taipei) as a scoped exception. Its Windows binary ZIP preserves
+the owner-supplied EXEs unchanged; they still report `2.0.0-dev.1`. Owner GUI
+smoke success does not complete CLI Agent or hardware acceptance, and CI source
+evidence does not authenticate the owner binaries' source revision. Do not
+extend that publication authorization or relabel pending cases as passed.
 
 ## Agent integration
 
-Keep persistent engineering rules in `AGENTS.md` / `CLAUDE.md`, universal task
+Keep persistent engineering rules in `AGENTS.md` (imported by `CLAUDE.md`), universal task
 routing in `README_AI.md`, operational instructions in the shared Skill, and
 conditional details in its bundled references. Follow the official Skill Creator
 workflow, validate the complete bundle and forward-test realistic requests after

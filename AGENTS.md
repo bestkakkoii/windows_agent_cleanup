@@ -1,48 +1,64 @@
-﻿# Windows Agent Cleanup engineering contract
+﻿# Repository engineering contract
 
-Scope: Windows 11+ x64; native C++26 named modules and vendor `import std`,
-MSVC `/std:c++latest`, Release `/MT`, no symbols or debug runtime. Newer explicit
-requirements supersede historical Windows 10/1809 and legacy CLI contracts.
+Use this file for development/review. For an actual cleanup request, route
+through [README_AI.md](README_AI.md) and its Skill. Reading instructions,
+installation or building never authorizes deletion of project material.
 
-For development, read the relevant approved requirements in
-`spec/requirements.json`, `docs/design.md`, and owning module contracts.
-`README_AI.md` is the universal use/development routing entry. A code, review or
-build task is not cleanup authorization; never enter cleanup as build setup.
-For cleanup use, follow the shared Skill’s plan-selection and scope workflow.
+## Scope and source of truth
 
-Preserve fail-closed system protection, frozen membership, execution identity
-validation, deferred lock recovery, and independent forced-process approval.
-No fixed target-count ceiling: derive resident memory/commit/disk/handle budgets
-from current resources; never truncate a batch or delete before full admission.
-CLI is noninteractive native bulk input with compact structured results and
-external reports. No MCP. The optional Skill owns cleanup procedures and conditional references; installation is not cleanup permission.
+- Target Windows 11+ x64, MSVC `/std:c++latest`, native C++26 named modules and
+  vendor `import std`, Release `/MT` without symbols/debug runtime. Earlier
+  Windows 10/1809 contracts are superseded by the recorded amendments. Keep
+  the CLI native and machine-only, without MCP or another orchestration runtime.
+- Read only the relevant decisions in [requirements](spec/requirements.json)
+  and owning `src/modules/*.ixx` contracts. For cross-module changes consult
+  [design](docs/design.md). Protocol procedures belong in the Skill references;
+  build/package details belong in [CONTRIBUTING.md](CONTRIBUTING.md).
+- Keep one authority per rule. Put repeatable cleanup procedures in the Skill,
+  durable engineering rules here, and release/evidence state in
+  [project metadata](spec/project.json) and [publication policy](docs/publication.md).
 
-Use independent agents for beneficial disjoint work, one writer per file. The
-integrator owns integration/build/publication and delegates module contracts.
-Internal collaboration is concise technical English, uses the simplest
-sufficient format, cites paths instead of repeating large context, and
-propagates this policy. Report changed files, invariants, checks, failures and
-pending evidence. Give delegated agents a self-contained scoped handoff.
+## Implementation invariants
 
-Allman braces, always braces, snake_case own identifiers, RAII, checked sizes,
-no goto; `import std` in every owned C++ unit. SDK/third-party includes remain
-at boundaries. Every owned source file must be UTF-8+BOM; build preflight rejects missing BOM
-or invalid UTF-8. Pinned upstream bytes remain immutable and compile with
-explicit UTF-8 flags. Source/docs: UTF-8 BOM; JSON/JSONL: UTF-8 without BOM; BAT: ASCII
-CRLF. Mandatory host filenames and Skill frontmatter/names follow host format.
+- GUI/CLI share core policy. Preserve fail-closed system protection, frozen
+  membership, execution identity checks, no reparse traversal, deferred Quick
+  failure recovery and independent downgrade/forced-process approval.
+- Quick has no fixed target-count ceiling. Admit the complete batch against
+  live memory/commit/disk/handle budgets; never truncate or mutate before full
+  admission. A suite pass does not establish every case or hardware capability.
+- Use Allman braces, explicit braces, snake_case own names, RAII and checked
+  sizes; no goto. Every owned C++ unit uses `import std`; SDK/third-party
+  includes stay at boundaries. Keep locked upstream bytes unchanged.
+- Owned source/docs use UTF-8+BOM. Host exceptions: JSON/JSONL/YAML and
+  `SKILL.md` frontmatter use UTF-8 without BOM; BAT uses ASCII CRLF. Preserve
+  strict diagnostics and the checks enforcing these formats.
+- Tool placement has no prescribed drive or parent. For authorized setup,
+  choose a suitable location, reuse a valid root and derive resources from the
+  actual entry file. Client discovery folders are separate from the program.
 
-Keep only maintained sources/config/docs/assets/tests in Git. No build output,
-caches, downloaded dependencies, archives, temporary handoffs, raw logs or
-per-run reports. Review staged content. Use normal commits/push only within
-owner authorization; do not rewrite shared history or force-push by assumption.
-Run relevant static/build checks and risk-driven tests; destructive checks use
-created disposable fixtures. Never present portable/stub checks as native
-Windows or hardware evidence. No NAND sanitization guarantee. Both RC and Release publication require owner-returned Windows build/test
-evidence and review for the exact revision. CI alone produces unpublished
-development test artifacts; never publish from a commit-message marker. Missing
-platform evidence prevents Release even after an RC is approved.
+## Commands and evidence
 
-For the owner-directed `v2.0.0` first public distribution, follow the explicit
-exception in docs/publication.md: use owner-supplied EXE bytes unchanged and
-disclose pending CLI/hardware acceptance. Never extend that authorization to
-another version or present pending cases as passed.
+- `build_release.bat`: configure/build Release, check manifests and run safe
+  suites under an ordinary token. Add `-enable_isolated_destructive_tests` only
+  in an already elevated console for disposable fixtures; no separate test BAT.
+- `python scripts/validate.py --output-dir build/source_validation`: source
+  encoding/module checks, without a native build or runtime claim. Python 3.11+
+  is for source tooling, not a native application dependency.
+- Run checks justified by the change and retain stage/native error context.
+  Keep `build_logs/<run_id>` and raw evidence outside Git. Distinguish source,
+  portable, hosted Windows, owner-binary, GUI and hardware validation; preserve
+  case-level `not_run` outcomes. Never claim physical NAND sanitization.
+
+## Collaboration, review and delivery
+
+Use independent agents only for useful disjoint work, with one writer per file.
+Give self-contained scoped handoffs in concise technical English, cite files,
+choose the simplest sufficient format and propagate this policy to delegates.
+Report changed behavior, checks, failures and pending evidence.
+
+Track maintained source/config/docs/assets/tests and dependency locks only.
+Exclude outputs, caches, downloaded dependencies, archives, raw logs and temporary
+handoffs. Review the staged diff, use normal authorized commits/push, and never
+rewrite shared history or force-push by assumption. Publication is separately
+scoped by the owner and [policy](docs/publication.md); CI alone grants no release
+permission, and an existing published asset must not be silently replaced.

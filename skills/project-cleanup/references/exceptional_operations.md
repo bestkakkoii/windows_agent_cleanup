@@ -4,11 +4,20 @@ Use this reference only after the user specifically chooses one of these
 operations. Ordinary quick-plan authorization does not authorize overwrite,
 downgrade, process termination or privilege-policy changes.
 
-## Authenticated overwrite recovery
+## Overwrite preview and authenticated recovery
 
-An overwrite scan persists an authenticated pending plan and returns `job_id`
-(32 lowercase hexadecimal characters), `plan_fingerprint` (64 lowercase
-hexadecimal characters) and `resumable`. Read back the result and use the same
+After explicit overwrite authorization, prepare and review a saved plan:
+
+```powershell
+& $cli scan --mode overwrite --request-id overwrite_scan_001 --root $root `
+  --manifest $manifest --report-dir $report_dir
+```
+
+Use the bulk reference's literal-path manifest. Inspect the scan records for
+blocked targets, `capability` and `downgrade_required`; a scan does not authorize
+a downgrade. An overwrite scan persists an authenticated pending plan and
+returns `job_id` (32 lowercase hexadecimal characters), `plan_fingerprint`
+(64 lowercase hexadecimal characters) and `resumable`. Read back the result and use the same
 root and protected report store. Resume is overwrite-only and takes no `--mode`:
 
 ```powershell
@@ -21,10 +30,23 @@ Bind variables from the authenticated scan/result and chosen installation;
 never invent fingerprints or IDs. Membership is never re-enumerated. An
 optional resume `--manifest` contains only exact individual namespace records
 with an independently authorized `allow_downgrade` value, `delete_only` or
-`overwrite_best_effort`. Grants must match observed capability; a directory
-grant does not authorize descendants. Quick manifests reject downgrade grants.
-A changed capability requires new independent consent. Logical overwrite,
-Flush and full readback do not prove removal of historical NAND/snapshot data.
+`overwrite_best_effort`, for example:
+
+```json
+{"path":"C:\\work\\demo\\data.bin","allow_downgrade":"overwrite_best_effort"}
+```
+
+Use the exact canonical namespace returned by the scan, not a guessed alias.
+Grants must match its observed capability; a directory grant does not authorize
+descendants. `delete_only` permits deletion without overwrite.
+`overwrite_best_effort` permits the reported limited logical overwrite, not a
+physical sanitization guarantee. Supply that grant-only manifest on `resume`;
+omitting a required grant leaves that target unapproved. Resume imports no new
+targets, and quick manifests reject downgrade grants. A changed capability
+fails revalidation; do not silently broaden a grant or replace the saved plan.
+Obtain new independent consent and a new reviewed plan when required. Logical
+overwrite, Flush and full readback do not prove removal of historical
+NAND/snapshot data.
 
 ## Lock inspection and normal close
 
@@ -35,8 +57,12 @@ Use a selected target's exact `target_key` from its quick scan report:
   --report-dir $report_dir --path $path --target-key $target_key
 ```
 
-For a separately authorized normal close, obtain the fresh lock report's exact
-`pid`, `created` and `image` tuple:
+For a separately authorized normal close, select only a fresh lock record with
+`eligible: true` and a nonempty `image`; use its exact `pid`, `created` and
+`image` tuple. Ineligible/protected records may omit the image: report their
+`reason` instead of inventing an image or attempting release.
+
+Use that eligible tuple:
 
 ```powershell
 & $cli release --request-id release_001 --root $root `
@@ -47,9 +73,9 @@ For a separately authorized normal close, obtain the fresh lock report's exact
 These commands return one result object with `mode: process`; detailed lock
 records are in `report_file`. The 64-character lowercase hexadecimal
 `target_key` binds the exact selected namespace, not a directory's hidden child.
-Preserve `created` as an exact unsigned 64-bit integer/decimal string; do not
-round it through JavaScript `Number`. Avoid PowerShell's read-only `$PID`;
-use `$selected_pid` for command construction.
+Lock records encode `created` as a decimal string. Pass that exact unsigned
+64-bit value unchanged; do not round it through JavaScript `Number`. Avoid
+PowerShell's read-only `$PID`; use `$selected_pid` for command construction.
 
 Add release-only `--authorize-force` solely after independent fresh approval
 for that exact process. Never infer it from a cleanup plan,

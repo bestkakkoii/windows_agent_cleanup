@@ -1,92 +1,64 @@
 ﻿# Windows Agent Cleanup — AI entry
 
-Read this file from its actual absolute path, for example
-`C:/tools/windows_agent_cleanup/README_AI.md`. Resolve all links from that tool
-directory, never from the project being cleaned. Any local AI with file access
-and Windows process execution can follow this entry; Skill registration and MCP
-are unnecessary. A remote chat without access to that Windows machine must
-state the limitation instead of claiming it performed cleanup.
+Start from this file's actual absolute path. Its containing directory is
+`<tool_root>`; resolve bundled links there, not from the project being cleaned.
+Any local AI with access to that Windows machine can use this manual entry.
+It does not require MCP, Skill registration, Python, Node.js or a model SDK.
+`README_AI.md` is not a host-specific auto-loaded instruction filename.
 
-## Choose what to read
+## Select the requested route
 
-| Requested work | Next document |
+| Task | Read next |
 |---|---|
-| Clean project residues, select a cleanup plan, or inspect candidates | Read [project-cleanup/SKILL.md](skills/project-cleanup/SKILL.md). It contains the actual plan-selection and execution workflow, with conditional bundled references. |
-| Build, fix, review or extend this tool | Read [AGENTS.md](AGENTS.md), or [CLAUDE.md](CLAUDE.md) for Claude Code, then the relevant [design](docs/design.md), [requirements](spec/requirements.json) and module contracts. |
-| Install optional native Skill discovery | Follow the installation section below. |
+| Choose a cleanup plan, inspect residues or perform authorized cleanup | [Project cleanup Skill](skills/project-cleanup/SKILL.md), then only the references selected by its current step |
+| Develop, build, fix, review or extend this tool | [AGENTS.md](AGENTS.md); Claude Code's [CLAUDE.md](CLAUDE.md) imports the same rules. Load [CONTRIBUTING.md](CONTRIBUTING.md), relevant requirements and module contracts as the task needs |
+| Register optional client Skill discovery | [Registration procedure](docs/skill_design.md#optional-registration) and the actual [tool binding](skills/project-cleanup/references/tool_location.md) |
+| Check release identity, evidence or publication | [Project metadata](spec/project.json) and [publication policy](docs/publication.md) |
 
-For cleanup, the Skill asks once for the missing plan and absolute project
-scope: **default automatic cleanup**, **custom directory/list cleanup**, or
-**scan only**. Reuse choices already given in the conversation. Default cleanup
-removes only positively proven disposable residues, research intermediates,
-caches, obsolete experimental code, directories or confirmed redundant copies;
-uncertain material stays in place. Reading this entry or requesting development
-never grants deletion authority. The native CLI remains noninteractive.
+For cleanup, the Skill asks once for missing **plan** and **absolute project
+scope**, reusing choices already supplied. It offers default automatic cleanup,
+custom directory/list cleanup or scan only. Default cleanup removes only
+positively proven disposable material; uncertain material stays. Reading an
+entry, registering a Skill or requesting engineering work grants no deletion
+authority. The CLI remains noninteractive; the Agent owns plan selection and
+classification. An Agent without machine access must report that limitation.
 
-The complete operational rules live in the Skill bundle, not duplicated here.
-Read only the references selected by its current step. Do not load engineering,
-build and exceptional-operation manuals for an ordinary quick cleanup.
+## Locate or place the tool
 
-## Locate the program
+No drive, directory name or parent such as `D:/Tools` or `C:/tools` is mandatory.
+For authorized setup, choose a suitable writable location from existing layout,
+available storage, permissions and user/project scope. Reuse a valid existing
+installation; choose the path without asking merely to replace an example.
+Keep the tool and its diagnostic state outside material selected for cleanup.
 
-The distribution root is the directory containing this file. Use
-`bin/secure_erase_cli.exe` for a binary bundle or
-`build/windows_release/secure_erase_cli.exe` for a built source checkout. The GUI
-is `secure_erase_gui.exe` beside it. Do not silently choose an unrelated EXE from
-PATH. Windows 11+ x64 and an already elevated process are required for filesystem
-commands; structured `capabilities` works without elevation. No Python, Node.js,
-model SDK or MCP service is needed to run the native program.
+After placement, the actual README location is authoritative. Preserve the
+complete layout and use `<tool_root>/bin/secure_erase_cli.exe` in a binary bundle
+or `<tool_root>/build/windows_release/secure_erase_cli.exe` in a built checkout.
+The GUI is beside it. Bind an installed Skill through its
+[location reference](skills/project-cleanup/references/tool_location.md), not an
+example path or unrelated PATH executable. Moving an intact relative-bound
+bundle and rebinding an installed absolute-bound copy are different operations;
+follow that reference rather than bypassing ownership checks.
 
-## Engineering tasks
+Windows 11+ x64 is required. Filesystem commands need an already elevated
+process. Structured `capabilities`, `--version` and `--help` queries work without
+elevation; reuse a capability binding while the executable identity is unchanged.
 
-If the EXE is missing from a source checkout, building is separate engineering
-work. Read [CONTRIBUTING.md](CONTRIBUTING.md) and the engineering contract; use
-`build_release.bat` to compile, check embedded manifests and run the safe native
-suites in one command. The default flow works under an ordinary effective token
-and does not request elevation. Add `-enable_isolated_destructive_tests` only
-from an already elevated terminal to also run disposable destructive fixtures.
-The one-click bootstrap selects installed MSVC/SDK components and builds exact
-locked CMake/Ninja sources in an ignored private cache. First build needs network and takes longer than cached
-rebuilds. Preserve `build_logs/<run_id>` for diagnosis. Before destructive
-fixture opt-in read [Windows test plan](docs/windows_test_plan.md).
+## Source checkout versus binary bundle
 
-Publishing is separate from the build command. Follow
-[CONTRIBUTING.md](CONTRIBUTING.md) for the current packaging, evidence and
-publication requirements. CI checks establish only their recorded scope, and
-an existing tag does not establish acceptance. Verify source
-archives without extracting/executing their contents using
-`python scripts/verify_package.py PATH --expected-commit COMMIT --expected-sha256 SHA256`,
-with expectations obtained from the trusted repository/delivery record.
+The binary distribution ships native GUI/CLI programs, runtime routing files,
+the complete Skill, schemas and licenses. It has no source installer, build
+scripts or engineering tree. Its routing stubs link to source documents for
+engineering/registration work; direct cleanup needs none of that tooling.
 
-## Optional Skill registration
+In a source checkout, `build_release.bat` builds Release, checks manifests and
+runs safe tests in one command. For isolated disposable tests, use its explicit
+`-enable_isolated_destructive_tests` switch from an already elevated console.
+Follow [CONTRIBUTING.md](CONTRIBUTING.md) for prerequisites, diagnostics and
+source-package verification; building is separate from cleanup and publishing.
 
-Directly reading the absolute README and linked Skill works without installing
-anything. For native Codex or Claude Code discovery, install the complete bundle
-with the selected client's directory convention:
-
-```powershell
-& 'C:/tools/windows_agent_cleanup/scripts/install_skill.ps1' `
-  -Client codex -ToolRoot 'C:/tools/windows_agent_cleanup'
-```
-
-Use `-Client claude` for Claude Code. Defaults are the current user's
-`.agents/skills/project-cleanup` and `.claude/skills/project-cleanup` respectively.
-For project-local registration pass `-Destination` with that project's complete
-`.agents/skills/project-cleanup` or `.claude/skills/project-cleanup` path. The final
-component must be `project-cleanup`. Explicit installation changes only that
-Skill directory; it does not edit global `AGENTS.md`, `CLAUDE.md`, hooks, registry
-settings or client permissions, and it does not require symlinks.
-
-The installer copies `SKILL.md`, its referenced resources and `agents/openai.yaml`
-as one bundle. It binds a small location reference to this exact distribution,
-records hashes for all installed files, refuses unrelated/locally modified
-entries and safely upgrades an intact older owned thin entry. After moving the
-tool distribution, use a fresh destination or remove the prior owned installation
-explicitly before registering the new location; stale bindings fail closed.
-Do not manually copy only `SKILL.md` into a client discovery directory.
-
-Skill metadata is discoverable; its body loads when selected, and supporting
-references load only when relevant. Codex UI metadata is optional for other
-Agent Skills hosts. Client-specific features and permission grants are not
-required. See [Skill design](docs/skill_design.md) for the content map and
-upstream design references when developing this integration.
+Published distribution v2.0.0 preserves the owner EXEs, which still report
+`2.0.0-dev.1`. CLI Agent acceptance and the full hardware matrix remain pending.
+The [publication record](spec/project.json) separates distribution identity,
+source reference and binary provenance. Documentation on `main` may be newer
+than the tagged bundle; a source documentation update does not replace it.

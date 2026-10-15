@@ -22,7 +22,7 @@ Do not substitute an arbitrary existing directory or weaken its ACLs.
 
 Stream JSONL with a standard JSON serializer and UTF-8 **without BOM**:
 
-```json
+```jsonl
 {"path":"C:\\work\\demo\\build"}
 {"path":"C:\\work\\demo\\scratch_result.bin"}
 ```
@@ -49,8 +49,12 @@ Bind `$approved_path_stream` to the reviewed discovery stream, not every file
 under the root. Do not use shell string concatenation to produce JSON.
 
 Each line is one object containing only `path` for quick mode. Blank lines,
-unknown/duplicate fields and malformed UTF-8 are rejected. Do not manually
-escape paths or pass huge arrays through shell command arguments. These paths
+unknown/duplicate fields, malformed UTF-8 and a BOM are rejected. Native parsing
+also rejects UNC/device paths, NUL, empty/dot components and components ending
+in a dot or space; paths must fit 32,760 UTF-16 code units. A final newline is
+optional. Do not manually escape paths or pass huge arrays through shell
+command arguments. The bundled manifest schema describes object fields; native
+parsing and preparation enforce these additional path/scope rules. These paths
 are format examples, not selections or authorization.
 
 ## Invoke
@@ -83,10 +87,14 @@ Omit overrides for automatic quick scheduling. `--workers 0` and
 `--memory-bytes 0` select automatic budgets; explicit values constrain requests
 and do not guarantee admission. `--io-bytes-per-second` and
 `--ssd-queue-depth` apply only to overwrite. Retention flags are
-`--log-retention-days` and `--checkpoint-retention-days`; checkpoint retention
-`0` keeps incomplete jobs until completion or explicit policy/removal.
+`--log-retention-days` and `--checkpoint-retention-days` (0–36,500 days).
+Defaults are 30 days for engine event logs and `0` for incomplete checkpoints;
+checkpoint retention `0` keeps them until completion or explicit policy/removal.
+These flags do not expire the CLI's per-request `*.report.jsonl` files. Manage
+those reports and manifests separately after completion is reconciled; do not
+remove an active store or needed recovery evidence.
 
 Keep manifests and diagnostic stores private and outside the source repository
-when practical; paths can be sensitive. Preserve per-job evidence until its
-completion is reconciled. Native reports and scratch files have separate
-lifetime policies; ephemeral quick scratch is not a recoverable saved plan.
+when practical; paths can be sensitive. Ephemeral quick scratch is not a
+recoverable saved plan. Overwrite checkpoints contain protected recovery state
+and restore no authorization: every resume requires fresh explicit consent.

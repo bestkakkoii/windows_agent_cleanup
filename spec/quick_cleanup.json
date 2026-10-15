@@ -6,7 +6,9 @@
   "interfaces": {
     "cli": "Native machine-only scoped JSONL batch requests; one compact JSON summary; no MCP",
     "gui": "Minimal ImGui/Win32/DX11 controls using the same protected adaptive core",
-    "agent_entry": "README_AI.md; optional thin Codex/Claude Skills"
+    "agent_entry": "README_AI.md; optional complete portable project-cleanup Skill with progressive disclosure for Codex/Claude and other Agents",
+    "cli_default": "capabilities; scan is explicit. Quick scan is advisory; overwrite scan can retain a protected resumable plan. Authorized run can prepare and execute one scoped manifest request",
+    "reports": "One compact stdout JSON summary and external detailed records; requested private reports may contain paths, unlike masked retained event logs and bounded GUI diagnostics"
   },
   "cleanup_plans": [
     "default autonomous cleanup with positive disposability evidence",
@@ -18,32 +20,40 @@
     "per_file_human_prompts": false,
     "irreversible_run_authorization": "explicit request flag after plan/scope selection",
     "force_process": "independent fresh target-key/PID/creation-time/image authorization",
-    "development_implies_cleanup": false
+    "development_implies_cleanup": false,
+    "procedure_boundary": "Agent/Skill selects the plan and confirms scope; native code enforces explicit request flags, manifest scope, identity and protection, not a human-dialogue transcript"
   },
   "execution": {
     "membership": "Complete batch frozen before mutation; additions/replacements excluded",
     "staging": "Bounded sorted runs and indexed protected scratch files; compact resource-admitted scheduler metadata",
-    "admission": "Live RAM/commit/job/handle/disk/CPU budgets; no fixed target count; reject whole batch before mutation if insufficient",
+    "admission": "No fixed Quick target-count or 16-worker ceiling; admit the complete batch from live memory/commit, CPU, handle and scratch-disk budgets plus caller limits before mutation",
     "preparation": "Bounded independent work with pinned ancestry, per-worker buffers and shared volume facts",
-    "scheduling": "Shared physical-device budgets, measured concurrency feedback, ready child-parent dependencies",
-    "failure_recovery": "Only after the full first pass; untouched targets retain explicit pending provenance",
+    "scheduling": "Shared physical-device groups; unknown topology grouped conservatively; measured concurrency probes require repeated gains and use regression rollback/cooldown; ready child-parent dependencies",
+    "failure_recovery": "Automatic access/lock recovery and limited retries only after the complete first pass; untouched targets retain explicit pending provenance; automatic force termination forbidden",
     "quick_resume": "In-session only; no external plan/report imported as retry authority",
     "crash": "Unknown or partial completion; never automatically rescan to discover a replacement batch",
     "outcomes": "Paged disk evidence, compact counters, bounded diagnostics; no per-file process startup",
-    "system_protection": "Core-enforced fail-closed nofollow and fresh identity/protection checks"
+    "system_protection": "Core-enforced fail-closed nofollow and fresh identity/protection checks; exact running EXE/module identities and containing ancestors protected, unrelated siblings permitted; OS/service/boot/private-state tree rules remain",
+    "resource_loss": "Later resource loss or device faults can stop an admitted job after partial deletion; retain quick_not_attempted provenance and a separate stopping_error; never silently truncate or rescan",
+    "resident_bound": "Target strings/outcomes are file-backed; compact dependency metadata remains proportional to target count and can exceed admission. Engine budgets are not a total process RSS guarantee",
+    "resource_observations": "CPU/queue/handle availability are conservative observations or estimates, not reserved OS capacity or proof of optimal hardware throughput"
   },
   "semantics": {
-    "quick": "Permanent logical namespace deletion; no content overwrite, verification or secure-erasure promise",
-    "overwrite": "Original verified logical overwrite requirements, authenticated checkpoints and explicit downgrade grants retained",
-    "hardlinks": "Separate selected names; unselected aliases survive; shared contents never overwritten",
+    "quick": "Permanent logical namespace deletion; no payload overwrite/readback or secure-erasure promise; identity and protection checks still apply",
+    "overwrite": "Separate verified logical overwrite engine: resident plan, bounded workers/queues, cryptographic stream, full flush/readback verification, authenticated durable checkpoints and explicit downgrade grants; Quick scheduling/storage claims do not apply",
+    "hardlinks": "Quick: separate selected names, unselected aliases survive, contents never overwritten. Overwrite: identity dedup selects one deterministic alias; shared data is delete-only with independent approval and retained aliases reported",
     "space": "Observed allocation may prioritize work; free-space observations are not attributable reclaimed-byte guarantees",
     "steam": "No verified private Steam uninstall algorithm is claimed",
     "physical_sanitization_guaranteed": false,
-    "hardware_maximum_throughput_proven": false
+    "hardware_maximum_throughput_proven": false,
+    "filesystem_scope": "NTFS/ReFS/FAT32/exFAT targeted; actual capability/protection checks required. Quick may use a conservative common group for unknown storage topology; overwrite rejects unsupported storage evidence. Scope is not a passed hardware matrix"
   },
   "delivery": {
     "git": "Maintained source/config/docs/assets/tests only; immutable dependency locks",
-    "archive": "Clean single-root Source ZIP, exact commit, manifest and SHA256",
-    "acceptance": "Required unit/integration/isolated destructive gates plus platform evidence; incomplete hardware/platform matrix remains RC"
-  }
+    "archive": "Source packaging produces an exact-commit, single-root Source ZIP with manifest/SHA256. Published v2.0.0 runtime ZIP instead contains owner GUI/CLI binaries, instructions, complete Skill, operational schemas and licenses; source/build/test files remain in Git",
+    "acceptance": "Normal RC/Release gates require scoped owner evidence and review; incomplete hardware/platform coverage prevents a later full Release. Published v2.0.0 uses only the explicit first-distribution exception in docs/publication.md",
+    "current_publication": "Published Latest v2.0.0 at source reference 2b552ba92c9e81cb1ef4b8101619993677b5548a; owner EXEs unchanged, still reporting 2.0.0-dev.1; no independently attested source-to-owner-binary binding",
+    "validation_scope": "Owner GUI quick/overwrite smoke reported; native CI 38778771188 passed 11 safe suites, four isolated suites and source packaging on hosted Server 2025. CLI Agent acceptance and full hardware matrix remain pending; see spec/project.json and docs/windows_test_plan.md"
+  },
+  "version_kind": "application_reported_version; distinct from published distribution tag"
 }

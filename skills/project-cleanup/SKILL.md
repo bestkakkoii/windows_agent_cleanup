@@ -25,9 +25,10 @@ native engine. Reading this Skill does not authorize deleting anything.
    discovery or whenever a candidate's provenance is unclear. Names, age,
    untracked/ignored status, missing references and equal bytes are insufficient
    by themselves. Do not infer that all project contents are disposable.
-4. Treat code/build/review requests as engineering work. Read the tool's
-   `AGENTS.md` or `CLAUDE.md` through the location binding below; do not clean as
-   setup. Expanding scope or changing scan-only into deletion needs a new choice.
+4. Treat code/build/review requests as engineering work. Follow the bound tool's
+   `README_AI.md` engineering route: a source checkout supplies `AGENTS.md` and
+   `CLAUDE.md`; the binary bundle routes to the source repository. Do not clean
+   as setup. Expanding scope or changing scan-only into deletion needs a new choice.
 
 Once a cleanup plan and scope are authorized, carry it through without per-file
 confirmation. Quick logical deletion is the default. Overwrite and forced
@@ -37,7 +38,10 @@ process termination require their own explicit authorization.
 
 Read [tool location](references/tool_location.md) to bind this Skill to its
 actual distribution. Resolve links relative to this Skill, not the target
-project or current working directory. Require access to the same Windows
+project or current working directory. Paths in examples are not installation
+requirements; choose a suitable writable local tool location when setup is
+authorized and none is supplied. Keep tool location separate from cleanup scope
+and client Skill discovery directories. Require access to the same Windows
 machine and an already elevated process for filesystem commands. Do not use an
 unrelated executable from PATH or request UAC through the CLI.
 

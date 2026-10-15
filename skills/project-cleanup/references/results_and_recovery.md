@@ -31,8 +31,18 @@ schema mismatch. Do not infer success from an empty error string, a removed
 path, an exit code alone or missing terminal output.
 
 Summarize totals, preserved uncertainty and material failures. Run reports omit
-successful path lists; scan reports include admitted discovery and eligibility.
-Filter detailed failures as needed instead of reading all paths into context.
+successful path lists; `windows_agent_cleanup.failure.v1` records include the
+namespace/identity, error and `deleted` flag. A failure record can have
+`deleted: true` when a later audit/checkpoint step failed; do not treat that as
+a completed job or assume the original object remains available for retry.
+
+Both scan modes emit `windows_agent_cleanup.scan_target.v1`. Quick records carry
+`path`, `target_key`, `directory`, `error_code` and `native_code`; overwrite
+records carry `path`, `identity`, `capability`, `downgrade_required` and
+`link_count`. Accepted paths use the frozen canonical Windows namespace and may
+have an extended prefix or expanded short-name spelling. Preserve the returned
+name/key pairing; do not match by basename, guessed case folding or file ID
+alone. Filter detailed failures instead of reading all paths into context.
 
 ## Partial, missing or unknown completion
 
