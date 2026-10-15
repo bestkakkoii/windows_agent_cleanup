@@ -12,7 +12,7 @@ Install Visual Studio x64 C++ tools with the vendor standard-library module, a c
 
 Keep the complete `build_logs/<run_id>/` output outside Git. Verify fresh first-build dependency restoration with the locked hashes, a cached offline rebuild, non-ASCII paths and spaces, PATH/fallback tool discovery, clean rebuild without prebuilt IFC/BMI, incompatible std-provider rejection, and Debug rejection. A corrupt dependency must be repaired and reverified or rejected before compilation.
 
-`validate_windows.bat -enable_isolated_destructive_tests` explicitly registers/runs disposable native fixtures. The registered native suites are `windows_backend_isolated`, `state_store_windows_isolated` and `quick_delete_windows_isolated`; safe suites and script/module checks run separately. Fixture unavailability, skipped cases and environmental refusal stay visible at case level. A suite-level pass does not certify a fixture that never ran.
+`validate_windows.bat -enable_isolated_destructive_tests` explicitly registers/runs disposable native fixtures. The registered native suites are `agent_cli_windows_isolated`, `windows_backend_isolated`, `state_store_windows_isolated` and `quick_delete_windows_isolated`; safe suites and script/module checks run separately. Fixture unavailability, skipped cases and environmental refusal stay visible at case level. A suite-level pass does not certify a fixture that never ran. The Agent CLI fixture covers actual process input/output, protected reports, mixed batches, authorization/scope rejection, exact lock identity and reparse boundaries. Deterministic console cancellation, successful forced termination and overwrite media acceptance still require their separate evidence.
 
 ## Runtime acceptance
 

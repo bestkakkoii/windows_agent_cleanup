@@ -169,7 +169,7 @@ namespace
             static_cast<unsigned long long>(sample.total_free), static_cast<unsigned long long>(sample.total_bytes));
     }
 
-    bool exists(const std::filesystem::path& path)
+    bool fixture_path_exists(const std::filesystem::path& path)
     {
         return GetFileAttributesW(path.c_str()) != INVALID_FILE_ATTRIBUTES;
     }
@@ -481,7 +481,7 @@ int main(int count, char** arguments)
         !drive_alias && drive_alias.error().code == "quick_space_volume_not_prepared" &&
         !unknown && unknown.error().code == "quick_space_volume_not_prepared",
         "space_sample_rejects_paths_aliases_and_unknown_guid");
-    check(regular_target && remove_target(backend, *regular_target, false) && !exists(regular), "regular_fast_delete");
+    check(regular_target && remove_target(backend, *regular_target, false) && !fixture_path_exists(regular), "regular_fast_delete");
     auto after = backend.sample_space(volume_key);
     check(after && after->volume_key == volume_key && after->available_to_caller <= after->total_bytes &&
         after->available_to_caller <= after->total_free, "same_frozen_volume_space_observed_after_delete");
@@ -496,7 +496,7 @@ int main(int count, char** arguments)
     check(create_file(readonly) && SetFileAttributesW(readonly.c_str(), FILE_ATTRIBUTE_READONLY), "readonly_fixture_created");
     auto readonly_target = freeze_one(backend, readonly);
     check(readonly_target && (remove_target(backend, *readonly_target, false) || remove_target(backend, *readonly_target, true)) &&
-        !exists(readonly), "readonly_delete_supported_or_deferred");
+        !fixture_path_exists(readonly), "readonly_delete_supported_or_deferred");
 
     const auto first = tree.root / L"selected_a.bin";
     const auto second = tree.root / L"selected_b.bin";
@@ -511,7 +511,7 @@ int main(int count, char** arguments)
         (*links)[0].identity == (*links)[1].identity && (*links)[0].path != (*links)[1].path;
     check(distinct_links, "hardlink_selected_names_remain_distinct");
     check(distinct_links && remove_target(backend, (*links)[0], false) && remove_target(backend, (*links)[1], false) &&
-        !exists(first) && !exists(second), "hardlink_both_selected_names_deleted");
+        !fixture_path_exists(first) && !fixture_path_exists(second), "hardlink_both_selected_names_deleted");
     check(!original_security.empty() && same_data(retained) && security_text(retained) == original_security,
         "hardlink_unselected_data_owner_dacl_unchanged");
 
@@ -523,7 +523,7 @@ int main(int count, char** arguments)
     check(lock.get() != INVALID_HANDLE_VALUE && locked_target && !remove_target(backend, *locked_target, false) &&
         same_data(locked), "locked_first_pass_fails_without_content_change");
     lock.close();
-    check(locked_target && remove_target(backend, *locked_target, true) && !exists(locked), "locked_deferred_retry_after_release");
+    check(locked_target && remove_target(backend, *locked_target, true) && !fixture_path_exists(locked), "locked_deferred_retry_after_release");
 
     const auto replaced = tree.root / L"replacement.bin";
     const auto old = tree.root / L"original_moved.bin";
@@ -556,7 +556,7 @@ int main(int count, char** arguments)
         auto denied_target = freeze_one(backend, denied_file);
         const auto parent_security = security_text(denied_dir);
         check(setup && denied_target && !remove_target(backend, *denied_target, false), "access_denied_deferred_from_first_pass");
-        check(setup && denied_target && remove_target(backend, *denied_target, true) && !exists(denied_file),
+        check(setup && denied_target && remove_target(backend, *denied_target, true) && !fixture_path_exists(denied_file),
             "scoped_restore_privilege_recovers_delete_access");
         check(!parent_security.empty() && parent_security == security_text(denied_dir), "access_recovery_parent_owner_dacl_unchanged");
         check(file_acl.restore() && parent_acl.restore(), "fixture_acl_restored");
@@ -571,10 +571,10 @@ int main(int count, char** arguments)
     const bool duplicated = process_opened && DuplicateTokenEx(process_token.get(), TOKEN_QUERY | TOKEN_IMPERSONATE |
         TOKEN_DUPLICATE, nullptr, SecurityImpersonation, TokenImpersonation, &impersonation_raw);
     held_file impersonation(impersonation_raw);
-    TOKEN_STATISTICS before{};
+    TOKEN_STATISTICS token_statistics_before{};
     DWORD returned{};
     const bool impersonated = duplicated && GetTokenInformation(impersonation.get(), TokenStatistics,
-        &before, sizeof(before), &returned) && SetThreadToken(nullptr, impersonation.get());
+        &token_statistics_before, sizeof(token_statistics_before), &returned) && SetThreadToken(nullptr, impersonation.get());
     check(impersonated, "preexisting_worker_impersonation_created");
     if (impersonated)
     {
@@ -582,9 +582,10 @@ int main(int count, char** arguments)
         HANDLE after_raw{};
         const bool after_opened = OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, TRUE, &after_raw) != FALSE;
         held_file after_token(after_raw);
-        TOKEN_STATISTICS after{};
-        check(after_opened && GetTokenInformation(after_token.get(), TokenStatistics, &after, sizeof(after), &returned) &&
-            before.TokenId.LowPart == after.TokenId.LowPart && before.TokenId.HighPart == after.TokenId.HighPart,
+        TOKEN_STATISTICS token_statistics_after{};
+        check(after_opened && GetTokenInformation(after_token.get(), TokenStatistics, &token_statistics_after, sizeof(token_statistics_after), &returned) &&
+            token_statistics_before.TokenId.LowPart == token_statistics_after.TokenId.LowPart &&
+            token_statistics_before.TokenId.HighPart == token_statistics_after.TokenId.HighPart,
             "original_impersonation_token_identity_restored");
         if (!check(RevertToSelf() != FALSE, "fixture_impersonation_reverted"))
         {
@@ -605,7 +606,7 @@ int main(int count, char** arguments)
             deleted = remove_target(backend, *readonly_alias_target, true);
         }
         const DWORD retained_attributes = GetFileAttributesW(retained.c_str());
-        check((deleted || exists(readonly_alias)) && same_data(retained) &&
+        check((deleted || fixture_path_exists(readonly_alias)) && same_data(retained) &&
             retained_attributes != INVALID_FILE_ATTRIBUTES && (retained_attributes & FILE_ATTRIBUTE_READONLY) != 0,
             "shared_readonly_alias_attribute_not_mutated");
     }
@@ -705,11 +706,11 @@ int main(int count, char** arguments)
     bool stream_setup = CreateDirectoryW(stream_root.c_str(), nullptr) != FALSE;
     for (unsigned branch = 0; branch < 4; ++branch)
     {
-        const auto directory = stream_root / (L"branch_" + std::to_wstring(branch));
-        stream_setup = CreateDirectoryW(directory.c_str(), nullptr) && stream_setup;
+        const auto stream_directory = stream_root / (L"branch_" + std::to_wstring(branch));
+        stream_setup = CreateDirectoryW(stream_directory.c_str(), nullptr) && stream_setup;
         for (unsigned item = 0; item < 16; ++item)
         {
-            stream_setup = create_file(directory / (L"item_" + std::to_wstring(item) + L".bin")) && stream_setup;
+            stream_setup = create_file(stream_directory / (L"item_" + std::to_wstring(item) + L".bin")) && stream_setup;
         }
     }
     check(stream_setup, "streaming_parallel_tree_fixture_created");
@@ -830,7 +831,7 @@ int main(int count, char** arguments)
             }
         }
     }
-    check(ready_deleted && !exists(ready_directory), "ready_directory_evicts_own_cached_leases_before_delete");
+    check(ready_deleted && !fixture_path_exists(ready_directory), "ready_directory_evicts_own_cached_leases_before_delete");
     backend.finish_execution();
 
     const auto scope_root = tree.root / L"scope";

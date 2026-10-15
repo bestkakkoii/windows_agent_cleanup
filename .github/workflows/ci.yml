@@ -54,6 +54,11 @@ jobs:
             build/tools/
             build/dependencies/
           key: ${{ runner.os }}-${{ runner.arch }}-${{ steps.image.outputs.version }}-tools-${{ hashFiles('dependencies.lock.json') }}
+          # A runner-image rollover need not rebuild an unchanged compiler/SDK
+          # tuple. The bootstrap still verifies its exact identity and four
+          # binary hashes before reuse; an incompatible restored entry rebuilds.
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-
       - name: Build pinned tools and Release modules; run isolated fixtures
         shell: powershell
         run: >-
