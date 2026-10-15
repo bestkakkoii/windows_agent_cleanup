@@ -295,6 +295,11 @@ private:
     backend& host_;
 };
 
+struct staged_failure
+{
+    engine::error error;
+};
+
 class execution
 {
     struct node
@@ -332,14 +337,17 @@ public:
         const options& settings, progress_observer observer,
         std::vector<std::string> keys, const engine::run_report* previous,
         resource_sample resources, admission_estimate admission)
-        : value_(value), host_(host), controls_(controls), settings_(settings),
+        : value_(&value), host_(host), controls_(controls), settings_(settings),
           observer_(std::move(observer)), errors_(value.targets.size()),
-          attempted_(value.targets.size()), nodes_(value.targets.size()),
+          attempted_(value.targets.size()), deleted_(value.targets.size()), nodes_(value.targets.size()),
           resources_(std::move(resources)), admission_(admission),
-          worker_ceiling_(admission.worker_capacity), worker_limit_(admission.worker_limit)
+          worker_ceiling_(admission.worker_capacity), worker_limit_(admission.worker_limit),
+          target_count_(value.targets.size())
     {
         resource_failure_.reserve(128);
-        report_.stopping_error.code.reserve(128);
+        report_.status.reserve(64);
+        progress_.stage.reserve(64);
+        report_.stopping_error.code.reserve(512);
         progress_.stopping_error.code.reserve(128);
         report_.job_id = value.job_id;
         report_.plan_fingerprint = value.fingerprint;
@@ -357,6 +365,7 @@ public:
             {
                 outcome = previous->targets[index];
                 attempted_[index] = true;
+                deleted_[index] = true;
                 ++progress_.attempted;
                 ++progress_.completed;
             }
@@ -374,6 +383,84 @@ public:
             report_.targets.push_back(std::move(outcome));
         }
         build_dependencies();
+    }
+
+    execution(target_source& source, outcome_sink& outcomes, backend& host,
+        engine::control& controls, const options& settings, progress_observer observer,
+        resource_sample resources, admission_estimate admission)
+        : source_(&source), outcomes_(&outcomes), host_(host), controls_(controls),
+          settings_(settings), observer_(std::move(observer)),
+          attempted_(source.info().target_count), deleted_(source.info().target_count),
+          nodes_(source.info().target_count), indexes_(source.info().target_count),
+          resources_(std::move(resources)), admission_(admission),
+          worker_ceiling_(admission.worker_capacity), worker_limit_(admission.worker_limit),
+          target_count_(source.info().target_count)
+    {
+        resource_failure_.reserve(128);
+        report_.status.reserve(64);
+        progress_.stage.reserve(64);
+        report_.stopping_error.code.reserve(512);
+        progress_.stopping_error.code.reserve(128);
+        report_.job_id = source.info().job_id;
+        report_.plan_fingerprint = source.info().fingerprint;
+        progress_.total = target_count_;
+        progress_.worker_limit = worker_limit_;
+        progress_.memory_budget_bytes = admission.memory_budget_bytes;
+        progress_.admitted_metadata_bytes = admission.resident_plan_bytes + admission.execution_metadata_bytes;
+        for (std::size_t position = 0; position < target_count_; ++position)
+        {
+            const auto index = source.index(position);
+            if (!index || (index->parent != std::numeric_limits<std::uint64_t>::max() && index->parent >= position) ||
+                (index->device_index == std::numeric_limits<std::uint32_t>::max() && !index->preparation_failed) ||
+                (index->device_index != std::numeric_limits<std::uint32_t>::max() &&
+                 index->device_index >= source.info().device_keys.size()))
+            {
+                throw staged_failure{index ? failure("quick_staged_index_invalid") : index.error()};
+            }
+            indexes_[position] = *index;
+            if (index->parent != std::numeric_limits<std::uint64_t>::max() &&
+                !indexes_[static_cast<std::size_t>(index->parent)].directory)
+            {
+                throw staged_failure{failure("quick_staged_parent_not_directory")};
+            }
+            auto outcome = get_outcome(position);
+            const auto identity = crypto::hex_digest(index->namespace_digest);
+            if (outcome.identity != identity || outcome.code.empty() || outcome.code.size() > 512 ||
+                !valid_utf8(outcome.code) || outcome.logical_overwrite_verified ||
+                outcome.physical_sanitization_guaranteed || outcome.written_bytes != 0 ||
+                outcome.verified_bytes != 0 || (outcome.deleted && !accepted(outcome)) ||
+                (!outcome.deleted && outcome.code == "deleted_quick_namespace_removed"))
+            {
+                throw staged_failure{failure("quick_staged_previous_binding_invalid")};
+            }
+            if (outcome.deleted)
+            {
+                if (index->preparation_failed)
+                {
+                    throw staged_failure{failure("quick_staged_previous_binding_invalid")};
+                }
+                attempted_[position] = true;
+                deleted_[position] = true;
+                ++progress_.attempted;
+                ++progress_.completed;
+            }
+            else if (index->preparation_failed)
+            {
+                auto target = load_target(position);
+                outcome.code = target.preparation_error.code;
+                outcome.native_code = target.preparation_error.native_code;
+                put_outcome(position, outcome);
+                attempted_[position] = true;
+                ++progress_.attempted;
+                ++progress_.failed;
+            }
+        }
+        build_dependencies();
+    }
+
+    [[nodiscard]] const progress& final_progress() const noexcept
+    {
+        return progress_;
     }
 
     [[nodiscard]] engine::run_report perform()
@@ -414,6 +501,7 @@ public:
                     }
                     const auto index = *selected;
                     const auto group = nodes_[index].group;
+                    const bool new_attempt = !attempted_[index];
                     ++active_;
                     ++groups_[group].active;
                     lock.unlock();
@@ -427,9 +515,20 @@ public:
                     --active_;
                     --groups_[group].active;
                     settle(index);
-                    feedback(group, index, duration);
+                    if (new_attempt)
+                    {
+                        feedback(group, index, duration);
+                    }
                     wake_.notify_all();
                 }
+            }
+            catch (const staged_failure& error)
+            {
+                const std::scoped_lock lock(mutex_);
+                resource_failure_ = error.error.code.size() < 128 ? error.error.code : "quick_staged_storage_failure";
+                resource_native_error_ = error.error.native_code;
+                fatal_.store(true);
+                wake_.notify_all();
             }
             catch (...)
             {
@@ -503,17 +602,112 @@ public:
     }
 
 private:
+    [[nodiscard]] bool is_directory(std::size_t position) const
+    {
+        return value_ != nullptr ? value_->targets[position].directory : indexes_[position].directory;
+    }
+
+    [[nodiscard]] bool preparation_failed(std::size_t position) const
+    {
+        return value_ != nullptr ? !value_->targets[position].preparation_error.code.empty() :
+            indexes_[position].preparation_failed;
+    }
+
+    [[nodiscard]] std::string_view device_key(std::size_t position) const
+    {
+        if (value_ != nullptr)
+        {
+            return value_->targets[position].device_key;
+        }
+        const auto device = indexes_[position].device_index;
+        return device == std::numeric_limits<std::uint32_t>::max() ? std::string_view{} :
+            std::string_view(source_->info().device_keys[device]);
+    }
+
+    [[nodiscard]] std::uint64_t allocated_bytes(std::size_t position) const
+    {
+        return value_ != nullptr ? value_->targets[position].allocated_bytes : indexes_[position].allocated_bytes;
+    }
+
+    [[nodiscard]] target load_target(std::size_t position)
+    {
+        if (value_ != nullptr)
+        {
+            return value_->targets[position];
+        }
+        auto loaded = source_->load(position);
+        if (!loaded)
+        {
+            throw staged_failure{loaded.error()};
+        }
+        const auto& index = indexes_[position];
+        const auto depth = static_cast<std::uint64_t>(std::count_if(loaded->path.begin(), loaded->path.end(),
+            [](char value)
+            {
+                return value == '/' || value == '\\';
+            }));
+        std::uint64_t bytes = sizeof(target);
+        if (!checked_add(bytes, loaded->path.size()) || !checked_add(bytes, loaded->identity.size()) ||
+            !checked_add(bytes, loaded->device_key.size()) || !checked_add(bytes, loaded->preparation_error.code.size()) ||
+            bytes > source_->info().maximum_target_bytes || depth > source_->info().maximum_ancestor_depth ||
+            !valid_target(*loaded) ||
+            loaded->directory != index.directory || loaded->allocated_bytes != index.allocated_bytes ||
+            loaded->device_key != device_key(position) ||
+            (!loaded->preparation_error.code.empty()) != index.preparation_failed ||
+            target_key(*loaded) != crypto::hex_digest(index.namespace_digest))
+        {
+            throw staged_failure{failure("quick_staged_target_binding_invalid")};
+        }
+        return std::move(*loaded);
+    }
+
+    [[nodiscard]] engine::target_outcome get_outcome(std::size_t position)
+    {
+        if (outcomes_ == nullptr)
+        {
+            return report_.targets[position];
+        }
+        auto outcome = outcomes_->read(position);
+        if (!outcome)
+        {
+            throw staged_failure{outcome.error()};
+        }
+        return std::move(*outcome);
+    }
+
+    void put_outcome(std::size_t position, const engine::target_outcome& value)
+    {
+        if (outcomes_ == nullptr)
+        {
+            report_.targets[position] = value;
+            return;
+        }
+        const auto recorded = outcomes_->record(position, value);
+        if (!recorded)
+        {
+            throw staged_failure{recorded.error()};
+        }
+    }
+
+    [[nodiscard]] engine::error error_at(std::size_t position)
+    {
+        if (outcomes_ == nullptr)
+        {
+            return errors_[position];
+        }
+        const auto outcome = get_outcome(position);
+        return {outcome.code, outcome.native_code, failed_devices_.contains(device_key(position))};
+    }
+
     [[nodiscard]] bool lower_priority(std::size_t left, std::size_t right) const
     {
-        const auto& lhs = value_.targets[left];
-        const auto& rhs = value_.targets[right];
-        if (lhs.directory != rhs.directory)
+        if (is_directory(left) != is_directory(right))
         {
-            return !lhs.directory;
+            return !is_directory(left);
         }
-        if (settings_.space_first && !lhs.directory && lhs.allocated_bytes != rhs.allocated_bytes)
+        if (settings_.space_first && !is_directory(left) && allocated_bytes(left) != allocated_bytes(right))
         {
-            return lhs.allocated_bytes < rhs.allocated_bytes;
+            return allocated_bytes(left) < allocated_bytes(right);
         }
         return left > right;
     }
@@ -561,33 +755,50 @@ private:
         // Unbound preparation failures are accounted without opening a target.
         const auto unbound_group = groups_.size();
         groups_.push_back(device_state{});
-        std::unordered_map<std::string_view, std::size_t> directories;
-        for (std::size_t index = 0; index < value_.targets.size(); ++index)
+        if (source_ != nullptr)
         {
-            const auto& target = value_.targets[index];
-            if (target.directory)
+            for (std::size_t position = 0; position < target_count_; ++position)
             {
-                directories.emplace(target.path, index);
-            }
-            nodes_[index].group = target.device_key.empty() ? unbound_group : volume_index.at(target.device_key);
-        }
-        for (std::size_t index = 0; index < value_.targets.size(); ++index)
-        {
-            auto prefix = std::string_view(value_.targets[index].path);
-            while (!prefix.empty())
-            {
-                const auto separator = prefix.find_last_of("/\\");
-                if (separator == std::string_view::npos)
+                const auto device = device_key(position);
+                nodes_[position].group = device.empty() ? unbound_group : volume_index.at(device);
+                const auto parent = indexes_[position].parent;
+                if (parent != std::numeric_limits<std::uint64_t>::max())
                 {
-                    break;
+                    nodes_[position].parent = static_cast<std::size_t>(parent);
+                    ++nodes_[static_cast<std::size_t>(parent)].remaining;
                 }
-                prefix = prefix.substr(0, separator);
-                const auto parent = directories.find(prefix);
-                if (parent != directories.end())
+            }
+        }
+        else
+        {
+            std::unordered_map<std::string_view, std::size_t> directories;
+            for (std::size_t index = 0; index < target_count_; ++index)
+            {
+                const auto& target = value_->targets[index];
+                if (target.directory)
                 {
-                    nodes_[index].parent = parent->second;
-                    ++nodes_[parent->second].remaining;
-                    break;
+                    directories.emplace(target.path, index);
+                }
+                nodes_[index].group = target.device_key.empty() ? unbound_group : volume_index.at(target.device_key);
+            }
+            for (std::size_t index = 0; index < target_count_; ++index)
+            {
+                auto prefix = std::string_view(value_->targets[index].path);
+                while (!prefix.empty())
+                {
+                    const auto separator = prefix.find_last_of("/\\");
+                    if (separator == std::string_view::npos)
+                    {
+                        break;
+                    }
+                    prefix = prefix.substr(0, separator);
+                    const auto parent = directories.find(prefix);
+                    if (parent != directories.end())
+                    {
+                        nodes_[index].parent = parent->second;
+                        ++nodes_[parent->second].remaining;
+                        break;
+                    }
                 }
             }
         }
@@ -641,7 +852,7 @@ private:
         std::chrono::steady_clock::duration elapsed)
     {
         auto& group = groups_[group_index];
-        if (value_.targets[index].directory || !report_.targets[index].deleted)
+        if (is_directory(index) || !deleted_[index])
         {
             return;
         }
@@ -740,7 +951,7 @@ private:
             fatal_.store(true);
             return;
         }
-        const auto estimated = fit_resources(admission_, value_.targets.size(), *refreshed, settings_);
+        const auto estimated = fit_resources(admission_, target_count_, *refreshed, settings_);
         if (!estimated)
         {
             resource_failure_ = estimated.error().code;
@@ -810,10 +1021,10 @@ private:
         return fatal_.load() || controls_.request.load() != engine::control_request::proceed;
     }
 
-    void publish(std::string stage)
+    void publish(std::string_view stage)
     {
         const std::scoped_lock lock(mutex_);
-        progress_.stage = std::move(stage);
+        progress_.stage.assign(stage);
         last_publication_ = std::chrono::steady_clock::now();
         if (observer_)
         {
@@ -831,28 +1042,32 @@ private:
 
     void store_error(std::size_t index, const engine::error& error)
     {
-        errors_[index] = !error.code.empty() && error.code != "deleted_quick_namespace_removed" &&
-            error.code.size() <= 512 && valid_utf8(error.code) ? error :
-            failure("quick_backend_error_invalid");
+        const auto normalized = !error.code.empty() && error.code != "deleted_quick_namespace_removed" &&
+            error.code.size() <= 512 && valid_utf8(error.code) ? error : failure("quick_backend_error_invalid");
+        if (outcomes_ == nullptr)
+        {
+            errors_[index] = normalized;
+        }
         if (error.device_fault)
         {
-            failed_devices_.insert(value_.targets[index].device_key);
+            failed_devices_.insert(device_key(index));
         }
         if (error.code == "critical_quick_thread_token_restore_failed" ||
             error.code == "critical_quick_readonly_restore_failed")
         {
             fatal_.store(true);
         }
-        auto& outcome = report_.targets[index];
-        outcome.code = errors_[index].code;
-        outcome.native_code = errors_[index].native_code;
+        auto outcome = get_outcome(index);
+        outcome.code = normalized.code;
+        outcome.native_code = normalized.native_code;
+        put_outcome(index, outcome);
     }
 
     void attempt(std::size_t index, bool recover_access)
     {
-        const auto removed = host_.remove(value_.targets[index], recover_access);
+        const auto target = load_target(index);
+        const auto removed = host_.remove(target, recover_access);
         const std::scoped_lock lock(mutex_);
-        auto& outcome = report_.targets[index];
         if (!attempted_[index])
         {
             attempted_[index] = true;
@@ -861,12 +1076,18 @@ private:
         }
         if (removed)
         {
+            auto outcome = get_outcome(index);
             outcome.code = "deleted_quick_namespace_removed";
             outcome.native_code = 0;
             outcome.deleted = true;
-            errors_[index] = {};
+            if (outcomes_ == nullptr)
+            {
+                errors_[index] = {};
+            }
+            deleted_[index] = true;
             ++progress_.completed;
             --progress_.failed;
+            put_outcome(index, outcome);
         }
         else
         {
@@ -905,7 +1126,7 @@ private:
         {
             return false;
         }
-        if (!failed_devices_.contains(value_.targets[index].device_key))
+        if (!failed_devices_.contains(device_key(index)))
         {
             return true;
         }
@@ -924,8 +1145,9 @@ private:
     {
         publish("recovery");
         std::set<std::pair<std::uint32_t, std::uint64_t>> closed;
-        for (std::size_t index = 0; index < value_.targets.size() && !stopped(); ++index)
+        for (std::size_t order = 0; order < target_count_ && !stopped(); ++order)
         {
+            const auto index = source_ == nullptr ? order : target_count_ - order - 1;
             if (std::chrono::steady_clock::now() >= next_resource_probe_)
             {
                 apply_resources(host_.inspect_resources(device_keys_));
@@ -935,19 +1157,20 @@ private:
                     break;
                 }
             }
-            if (report_.targets[index].deleted ||
-                !value_.targets[index].preparation_error.code.empty() ||
-                failed_devices_.contains(value_.targets[index].device_key) ||
-                !recoverable(errors_[index]))
+            if (deleted_[index] ||
+                preparation_failed(index) ||
+                failed_devices_.contains(device_key(index)) ||
+                !recoverable(error_at(index)))
             {
                 continue;
             }
             attempt(index, settings_.recover_access);
-            if (stopped() || report_.targets[index].deleted || !lock_failure(errors_[index]))
+            if (stopped() || deleted_[index] || !lock_failure(error_at(index)))
             {
                 continue;
             }
-            const auto processes = host_.query_locks(value_.targets[index]);
+            const auto target = load_target(index);
+            const auto processes = host_.query_locks(target);
             if (!processes)
             {
                 store_error(index, processes.error());
@@ -960,7 +1183,7 @@ private:
             }
             for (const auto& process : *processes)
             {
-                if (stopped() || failed_devices_.contains(value_.targets[index].device_key))
+                if (stopped() || failed_devices_.contains(device_key(index)))
                 {
                     break;
                 }
@@ -979,20 +1202,22 @@ private:
                     break;
                 }
                 closed.insert(key);
-                const auto released = host_.close_process(value_.targets[index], process, false);
+                const auto released = host_.close_process(target, process, false);
                 if (!released)
                 {
                     store_error(index, released.error());
                 }
             }
-            if (!stopped() && !failed_devices_.contains(value_.targets[index].device_key))
+            if (!stopped() && !failed_devices_.contains(device_key(index)))
             {
                 attempt(index, settings_.recover_access);
             }
         }
     }
 
-    const plan& value_;
+    const plan* value_{};
+    target_source* source_{};
+    outcome_sink* outcomes_{};
     backend& host_;
     engine::control& controls_;
     options settings_;
@@ -1000,13 +1225,16 @@ private:
     engine::run_report report_;
     std::vector<engine::error> errors_;
     std::vector<unsigned char> attempted_;
+    std::vector<unsigned char> deleted_;
     std::vector<node> nodes_;
+    std::vector<target_index> indexes_;
     resource_sample resources_;
     admission_estimate admission_;
     std::vector<device_state> groups_;
     std::vector<std::string_view> device_keys_;
     std::size_t worker_ceiling_{};
     std::size_t worker_limit_{};
+    std::size_t target_count_{};
     std::size_t active_{};
     std::size_t settled_{};
     std::size_t next_group_{};
@@ -1342,4 +1570,140 @@ engine::result<engine::run_report> run(const admitted_plan& value,
     return run_prepared(value.get(), approved_fingerprint, irreversible_confirmed, host,
         controls, settings, std::move(observer), previous);
 }
+engine::result<admission_estimate> estimate_admission(const staged_plan_info& value,
+    const resource_sample& resources, const options& settings)
+{
+    if (value.target_count == 0 ||
+        value.target_count > std::numeric_limits<std::uint64_t>::max() / 256 ||
+        value.maximum_target_bytes > std::numeric_limits<std::uint64_t>::max() / 4 ||
+        value.maximum_ancestor_depth > (std::numeric_limits<std::uint64_t>::max() - 4) / 256)
+    {
+        return std::unexpected(failure("quick_staged_size_overflow"));
+    }
+    admission_estimate estimate;
+    estimate.resident_plan_bytes = value.resident_bytes;
+    // Compact source index + dependency nodes + flags + queue entries and
+    // allocator allowance. Full target strings and outcomes stay in the store.
+    estimate.execution_metadata_bytes = static_cast<std::uint64_t>(value.target_count) * 256;
+    for (const auto& device : resources.devices)
+    {
+        if (!checked_add(estimate.execution_metadata_bytes, 512) ||
+            !checked_add(estimate.execution_metadata_bytes, device.device_key.capacity() + 1) ||
+            !checked_add(estimate.execution_metadata_bytes, device.device_key.capacity() + 1) ||
+            !checked_add(estimate.execution_metadata_bytes, device.scheduling_group.capacity() + 1) ||
+            !checked_add(estimate.execution_metadata_bytes, device.scheduling_group.capacity() + 1) ||
+            !checked_add(estimate.execution_metadata_bytes, device.scheduling_group.capacity() + 1))
+        {
+            return std::unexpected(failure("quick_staged_size_overflow"));
+        }
+    }
+    estimate.handles_per_worker = value.maximum_ancestor_depth + 4;
+    estimate.worker_bytes = 2 * 1024 * 1024;
+    if (!checked_add(estimate.worker_bytes, value.maximum_target_bytes * 4) ||
+        !checked_add(estimate.worker_bytes, value.maximum_ancestor_depth * 256) ||
+        !checked_add(estimate.execution_metadata_bytes, 256 * 1024))
+    {
+        return std::unexpected(failure("quick_staged_size_overflow"));
+    }
+    return fit_resources(estimate, value.target_count, resources, settings);
+}
+
+engine::result<staged_report> run_staged(target_source& source, outcome_sink& outcomes,
+    std::string_view approved_fingerprint, bool irreversible_confirmed, backend& host,
+    engine::control& controls, const options& settings, progress_observer observer,
+    bool reuse_completed)
+{
+    const auto& info = source.info();
+    if (!irreversible_confirmed || approved_fingerprint != info.fingerprint)
+    {
+        return std::unexpected(failure("quick_exact_plan_confirmation_required"));
+    }
+    if ((!valid_hex(info.job_id, 32) && !valid_hex(info.job_id, 64)) ||
+        !valid_hex(info.fingerprint, 64) || info.target_count == 0 || info.maximum_target_bytes == 0)
+    {
+        return std::unexpected(failure("quick_staged_manifest_invalid"));
+    }
+    try
+    {
+        const auto validated = source.validate();
+        if (!validated)
+        {
+            return std::unexpected(validated.error());
+        }
+        execution_scope lifetime(host);
+        const auto initialized = host.begin_execution();
+        if (!initialized)
+        {
+            return std::unexpected(initialized.error());
+        }
+        std::vector<std::string_view> devices;
+        std::unordered_set<std::string_view> unique;
+        for (const auto& device : info.device_keys)
+        {
+            if (device.empty() || device.size() > 1024 || !valid_utf8(device) || !unique.insert(device).second)
+            {
+                return std::unexpected(failure("quick_staged_device_table_invalid"));
+            }
+            devices.push_back(device);
+        }
+        auto resources = host.inspect_resources(devices);
+        if (!resources)
+        {
+            return std::unexpected(resources.error());
+        }
+        const auto covered = resource_coverage(*resources, devices);
+        if (!covered)
+        {
+            return std::unexpected(covered.error());
+        }
+        const auto admission = estimate_admission(info, *resources, settings);
+        if (!admission)
+        {
+            return std::unexpected(admission.error());
+        }
+        const auto prepared = outcomes.begin(info, reuse_completed);
+        if (!prepared)
+        {
+            return std::unexpected(prepared.error());
+        }
+        execution work(source, outcomes, host, controls, settings, std::move(observer),
+            std::move(*resources), *admission);
+        auto report = work.perform();
+        const auto& counts = work.final_progress();
+        staged_report summary{std::move(report.job_id), std::move(report.plan_fingerprint),
+            std::move(report.status), counts.total, counts.attempted, counts.completed,
+            counts.failed, counts.total - counts.attempted, std::move(report.stopping_error)};
+        try
+        {
+            const auto finalized = outcomes.finish(summary);
+            if (!finalized)
+            {
+                summary.status = "audit_finalization_failed";
+                summary.stopping_error.code.assign(finalized.error().code.size() <= 512 &&
+                    valid_utf8(finalized.error().code) ? std::string_view(finalized.error().code) :
+                    std::string_view("quick_outcome_finalization_failed"));
+                summary.stopping_error.native_code = finalized.error().native_code;
+                summary.stopping_error.device_fault = finalized.error().device_fault;
+            }
+        }
+        catch (...)
+        {
+            // SECURITY: A final persistence exception follows namespace mutation.
+            // Preserve actual completion counters instead of returning a preflight
+            // allocation failure that could conceal already removed names.
+            summary.status = "audit_finalization_failed";
+            summary.stopping_error.code.assign("quick_outcome_finalization_exception");
+        }
+        return summary;
+    }
+    catch (const staged_failure& error)
+    {
+        return std::unexpected(error.error);
+    }
+    catch (const std::bad_alloc&)
+    {
+        return std::unexpected(failure("quick_complete_plan_allocation_failed"));
+    }
+}
+
 }

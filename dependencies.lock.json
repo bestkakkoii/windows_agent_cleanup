@@ -9,7 +9,7 @@
       "branch": "master",
       "commit": "f6cee3879db644c193c2b8ddfd11d92a0ba763cb",
       "version_at_commit": "4.5.20261015",
-      "role": "Reviewed supported import std contract; installed tool must satisfy capability probe, not a binary bundled by this project.",
+      "role": "Hash-locked upstream default-branch source built into a private ignored cache by the bootstrap; exact source/tool identities are recorded.",
       "source_archive": {
         "url": "https://codeload.github.com/Kitware/CMake/tar.gz/f6cee3879db644c193c2b8ddfd11d92a0ba763cb",
         "sha256": "6d9e1fe47bdbb3c96236fa1d35c9957251681a4e96c58262a7e29a8134187625",
@@ -21,7 +21,7 @@
       "repository": "https://github.com/ninja-build/ninja",
       "branch": "master",
       "commit": "b81e306232dfa644e92145c7d2871690017969e8",
-      "role": "Reviewed upstream source; installed tool is logged and requires Ninja module dyndep support.",
+      "role": "Hash-locked upstream default-branch source built into a private ignored cache by the bootstrap; exact source/tool identities are recorded.",
       "source_archive": {
         "url": "https://codeload.github.com/ninja-build/ninja/tar.gz/b81e306232dfa644e92145c7d2871690017969e8",
         "sha256": "51a97743b55817a3edcb367444fddc459fafa4031750d7be72f5793646b04bcf",

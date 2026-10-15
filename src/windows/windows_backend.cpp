@@ -2503,7 +2503,7 @@ namespace
             bool unknown_topology{};
             for (const auto key : frozen_device_keys)
             {
-                if (!quick_volume_key_valid(key) || !known_volumes_.contains(key) || !unique.insert(std::string(key)).second)
+                if (!quick_volume_key_valid(key) || !known_volume(key) || !unique.insert(std::string(key)).second)
                 {
                     return std::unexpected(fail("quick_resource_volume_not_prepared", ERROR_INVALID_PARAMETER));
                 }
@@ -2572,58 +2572,686 @@ namespace
             return sample;
         }
 
+
         result<std::vector<quick::target>> prepare(const std::vector<std::string>& paths,
             control& controls) override
         {
-            finish_execution();
-            known_volumes_.clear();
-            storage_profiles_.clear();
+            class roots_adapter final : public quick::root_source
             {
-                const std::scoped_lock lock(volume_cache_.mutex);
-                volume_cache_.values.clear();
+            public:
+                explicit roots_adapter(const std::vector<std::string>& paths) : paths_(paths)
+                {
+                }
+                result<std::optional<std::string>> next() override
+                {
+                    if (next_ == paths_.size())
+                    {
+                        return std::optional<std::string>{};
+                    }
+                    return std::optional<std::string>(paths_[next_++]);
+                }
+            private:
+                const std::vector<std::string>& paths_;
+                std::size_t next_{};
+            };
+            class collector final : public quick::target_sink
+            {
+            public:
+                explicit collector(windows_quick_backend& owner) : owner_(owner)
+                {
+                }
+                result<void> append(quick::target value) override
+                {
+                    return owner_.append_target(values, std::move(value), bytes_);
+                }
+                std::vector<quick::target> values;
+            private:
+                windows_quick_backend& owner_;
+                std::size_t bytes_{};
+            };
+            roots_adapter input(paths);
+            collector output(*this);
+            auto prepared = prepare_stream(input, output, controls);
+            if (!prepared)
+            {
+                return std::unexpected(prepared.error());
+            }
+            return std::move(output.values);
+        }
+
+        result<void> prepare_stream(quick::root_source& input, quick::target_sink& output,
+            control& controls) override
+        {
+            finish_execution();
+            {
+                const std::scoped_lock lock(volumes_mutex_);
+                known_volumes_.clear();
             }
             auto initialized = begin_execution();
             if (!initialized)
             {
-                return std::unexpected(initialized.error());
+                return initialized;
             }
             auto resources = inspect_resources({});
             if (!resources)
             {
                 return std::unexpected(resources.error());
             }
-            preparation_budget_ = (std::min)(resources->available_memory_bytes,
-                resources->available_commit_bytes) / 8;
-            context_handle_budget_ = resources->available_handles / 8;
-            if (preparation_budget_ == 0 || resources->available_handles < 8)
+            preparation_budget_.store((std::min)(resources->available_memory_bytes,
+                resources->available_commit_bytes) / 8);
+            const auto worker_limit = preparation_worker_limit(*resources);
+            if (worker_limit == 0 || preparation_budget_.load() == 0)
             {
                 return std::unexpected(fail("quick_preparation_resources_insufficient", ERROR_NOT_ENOUGH_MEMORY));
             }
-            quick_privileges privileges;
-            auto enabled = privileges.enable(false);
-            if (!enabled)
+
+            struct lease_accounting
             {
-                return std::unexpected(enabled.error());
-            }
-            auto prepared = prepare_paths(paths, controls);
-            auto restored = privileges.restore();
-            if (!restored)
+                std::mutex mutex;
+                std::condition_variable changed;
+                std::uint64_t bytes{};
+                std::uint64_t handles{};
+                std::uint64_t handle_limit{};
+            };
+            struct ancestry
             {
-                halted_.store(true);
-                return std::unexpected(restored.error());
-            }
-            if (prepared)
-            {
-                for (const auto& value : *prepared)
+                std::shared_ptr<lease_accounting> accounting;
+                std::shared_ptr<const ancestry> parent;
+                std::vector<handle> owned;
+                std::uint64_t byte_charge{};
+                std::uint64_t handle_charge{};
+
+                ~ancestry()
                 {
-                    if (value.preparation_error.code.empty() && !value.identity.empty() &&
-                        quick_volume_key_valid(value.device_key))
+                    // OWNERSHIP: Release the actual handles before returning
+                    // their budget; shared parents remain charged until last use.
+                    owned.clear();
+                    if (accounting)
                     {
-                        known_volumes_.insert(value.device_key);
+                        const std::scoped_lock lock(accounting->mutex);
+                        accounting->bytes -= byte_charge;
+                        accounting->handles -= handle_charge;
+                        accounting->changed.notify_all();
                     }
                 }
+            };
+            struct work
+            {
+                std::wstring path;
+                std::shared_ptr<const ancestry> ancestors;
+                std::size_t depth{};
+                std::uint64_t charge{};
+            };
+            struct shared_state
+            {
+                std::mutex mutex;
+                std::shared_ptr<lease_accounting> leases{std::make_shared<lease_accounting>()};
+                std::deque<work> pending;
+                std::uint64_t work_bytes{};
+                std::uint64_t queued_bytes{};
+                std::uint64_t budget{};
+                std::size_t active{};
+                std::size_t admitted_workers{};
+                bool stopping{};
+                std::optional<error> failure;
+            } state;
+            state.budget = (std::min)(resources->available_memory_bytes, resources->available_commit_bytes) / 16;
+            state.admitted_workers = worker_limit;
+            state.leases->handle_limit = resources->available_handles / 4;
+            std::mutex emission_mutex;
+            std::mutex workers_mutex;
+            std::vector<std::jthread> workers;
+            std::atomic_uint64_t emitted{};
+            std::atomic<ULONGLONG> last_resource_sample{GetTickCount64()};
+            std::function<void()> worker;
+            std::function<result<void>(work)> process;
+
+            const auto fail_work = [&](error reason)
+            {
+                const std::scoped_lock lock(state.mutex);
+                if (!state.failure)
+                {
+                    state.failure = std::move(reason);
+                }
+                state.stopping = true;
+                state.leases->changed.notify_all();
+            };
+            const auto cancelled = [&]()
+            {
+                if (controls.request.load() != control_request::proceed)
+                {
+                    return true;
+                }
+                const std::scoped_lock lock(state.mutex);
+                return state.stopping;
+            };
+            const auto release_work = [&](const work& value)
+            {
+                const std::scoped_lock lock(state.mutex);
+                state.work_bytes -= value.charge;
+                --state.active;
+                state.leases->changed.notify_all();
+            };
+            const auto grow_workers = [&]()
+            {
+                const std::scoped_lock worker_lock(workers_mutex);
+                std::size_t desired{};
+                {
+                    const std::scoped_lock lock(state.mutex);
+                    if (!state.stopping)
+                    {
+                        desired = (std::min)(worker_limit, (std::min)(state.admitted_workers,
+                            state.pending.size() + state.active));
+                    }
+                }
+                while (workers.size() < desired)
+                {
+                    workers.emplace_back(worker);
+                }
+            };
+            const auto charge_work = [](const work& value) -> std::uint64_t
+            {
+                // RESOURCE: Include path capacity, queue node, shared lease refs
+                // and proportional ancestry scratch; no target-count ceiling.
+                return static_cast<std::uint64_t>(value.path.size()) * sizeof(wchar_t) * 4 +
+                    sizeof(work) * 4 + static_cast<std::uint64_t>(value.depth + 1) * sizeof(HANDLE) * 4 + 512;
+            };
+            const auto fits_work = [&](std::uint64_t charge)
+            {
+                const std::scoped_lock lease_lock(state.leases->mutex);
+                return state.leases->bytes <= state.budget && charge <= state.budget - state.leases->bytes &&
+                    state.work_bytes <= state.budget - state.leases->bytes - charge;
+            };
+            const auto reserve_inline = [&](work& value) -> result<void>
+            {
+                value.charge = charge_work(value);
+                const std::scoped_lock lock(state.mutex);
+                if (state.stopping || !fits_work(value.charge))
+                {
+                    return std::unexpected(fail("quick_preparation_working_set_exceeded", ERROR_NOT_ENOUGH_MEMORY));
+                }
+                state.work_bytes += value.charge;
+                return {};
+            };
+            const auto emit = [&](quick::target value) -> result<void>
+            {
+                if (cancelled())
+                {
+                    return std::unexpected(fail("quick_preparation_cancelled", ERROR_CANCELLED));
+                }
+                const auto volume = value.preparation_error.code.empty() ? value.device_key : std::string{};
+                {
+                    // CONTRACT: Sinks need not be concurrently writable. No full
+                    // roots, targets or dedup set are retained by this pipeline.
+                    const std::scoped_lock lock(emission_mutex);
+                    auto appended = output.append(std::move(value));
+                    if (!appended)
+                    {
+                        return appended;
+                    }
+                    if (!volume.empty() && quick_volume_key_valid(volume))
+                    {
+                        const std::scoped_lock volume_lock(volumes_mutex_);
+                        known_volumes_.insert(volume);
+                    }
+                }
+                const auto count = emitted.fetch_add(1) + 1;
+                const auto now = GetTickCount64();
+                auto previous = last_resource_sample.load();
+                if (count % 1024 == 0 && now - previous >= 1000 &&
+                    last_resource_sample.compare_exchange_strong(previous, now))
+                {
+                    auto current = inspect_resources({});
+                    if (!current)
+                    {
+                        return std::unexpected(current.error());
+                    }
+                    const auto headroom = (std::min)(current->available_memory_bytes, current->available_commit_bytes);
+                    reduce_preparation_budget(headroom / 8);
+                    const std::scoped_lock lock(state.mutex);
+                    state.budget = (std::min)(state.budget, headroom / 16);
+                    state.admitted_workers = (std::min)(worker_limit, preparation_worker_limit(*current));
+                    bool handle_pressure{};
+                    {
+                        const std::scoped_lock lease_lock(state.leases->mutex);
+                        state.leases->handle_limit = current->available_handles / 4;
+                        handle_pressure = state.leases->handles > state.leases->handle_limit;
+                    }
+                    if (state.admitted_workers == 0 || handle_pressure || !fits_work(0))
+                    {
+                        return std::unexpected(fail("quick_preparation_resource_pressure", ERROR_NOT_ENOUGH_MEMORY));
+                    }
+                    state.leases->changed.notify_all();
+                }
+                return {};
+            };
+            const auto schedule_child = [&](work value) -> result<void>
+            {
+                value.charge = charge_work(value);
+                bool queued{};
+                {
+                    const std::scoped_lock lock(state.mutex);
+                    const auto queue_budget = state.budget / 2;
+                    if (!state.stopping && value.charge <= queue_budget &&
+                        state.queued_bytes <= queue_budget - value.charge &&
+                        fits_work(value.charge))
+                    {
+                        state.work_bytes += value.charge;
+                        state.queued_bytes += value.charge;
+                        // PERFORMANCE: Descendants precede unrelated queued
+                        // roots so producer backlogs cannot retain one directory
+                        // lease per root while starving their already-known files.
+                        state.pending.push_front(value);
+                        queued = true;
+                        state.leases->changed.notify_all();
+                    }
+                }
+                if (queued)
+                {
+                    grow_workers();
+                    return {};
+                }
+                // PERFORMANCE: A worker never blocks while producing into its
+                // own full queue. Bounded local traversal guarantees progress;
+                // its active scratch is charged separately or admission fails.
+                auto reserved = reserve_inline(value);
+                if (!reserved)
+                {
+                    return reserved;
+                }
+                auto completed = process(value);
+                {
+                    const std::scoped_lock lock(state.mutex);
+                    state.work_bytes -= value.charge;
+                    state.leases->changed.notify_all();
+                }
+                return completed;
+            };
+
+            process = [&](work value) -> result<void>
+            {
+                if (cancelled())
+                {
+                    return std::unexpected(fail("quick_preparation_cancelled", ERROR_CANCELLED));
+                }
+                const auto rejected = [&](error reason) -> result<void>
+                {
+                    auto text = utf8(value.path);
+                    if (!text)
+                    {
+                        return std::unexpected(text.error());
+                    }
+                    quick::target target;
+                    target.path = std::move(*text);
+                    target.preparation_error = std::move(reason);
+                    return emit(std::move(target));
+                };
+                if (value.depth > maximum_depth)
+                {
+                    return rejected(fail("quick_depth_limit", ERROR_BUFFER_OVERFLOW));
+                }
+                std::vector<handle> owned;
+                std::vector<HANDLE> ancestors;
+                if (value.ancestors)
+                {
+                    // PERFORMANCE: Each retained node owns only its own handles.
+                    // Build one active scratch chain instead of retaining O(D^2)
+                    // copied vectors along a depth-D parent chain.
+                    std::vector<const ancestry*> chain;
+                    for (auto node = value.ancestors.get(); node != nullptr; node = node->parent.get())
+                    {
+                        chain.push_back(node);
+                    }
+                    for (auto node = chain.rbegin(); node != chain.rend(); ++node)
+                    {
+                        for (const auto& pin : (*node)->owned)
+                        {
+                            ancestors.push_back(pin.get());
+                        }
+                    }
+                }
+                else
+                {
+                    auto pinned = pin_ancestors(value.path, true);
+                    if (!pinned)
+                    {
+                        return rejected(pinned.error());
+                    }
+                    owned = std::move(*pinned);
+                    for (const auto& pin : owned)
+                    {
+                        ancestors.push_back(pin.get());
+                    }
+                    auto scoped = validate_scope(scope_);
+                    if (!scoped)
+                    {
+                        return std::unexpected(scoped.error());
+                    }
+                }
+                for (const auto ancestor : ancestors)
+                {
+                    FILE_ATTRIBUTE_TAG_INFO tag{};
+                    if (!GetFileInformationByHandleEx(ancestor, FileAttributeTagInfo, &tag, sizeof(tag)))
+                    {
+                        return rejected(fail("quick_ancestor_attributes_changed"));
+                    }
+                    if (!(tag.FileAttributes & FILE_ATTRIBUTE_DIRECTORY) || (tag.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT))
+                    {
+                        return rejected(fail("quick_reparse_ancestor_denied", ERROR_ACCESS_DENIED));
+                    }
+                }
+                handle file(CreateFileW(value.path.c_str(), FILE_READ_ATTRIBUTES | READ_CONTROL,
+                    FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
+                    FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_POSIX_SEMANTICS, nullptr));
+                if (!file)
+                {
+                    return rejected(fail("quick_preparation_open_failed"));
+                }
+                auto canonical = final_name(file.get());
+                if (!canonical)
+                {
+                    return rejected(canonical.error());
+                }
+                // SECURITY: Enumerated children already use the held parent's
+                // canonical spelling. A different resolved name is redirection,
+                // not another target to silently admit into the frozen batch.
+                if (value.ancestors && *canonical != value.path)
+                {
+                    return rejected(fail("quick_preparation_namespace_changed", ERROR_INVALID_DATA));
+                }
+                if (scope_ && !scope_contains(*scope_, *canonical))
+                {
+                    return std::unexpected(fail("quick_target_outside_scope", ERROR_ACCESS_DENIED));
+                }
+                if (scope_ && *canonical == scope_->path)
+                {
+                    auto scoped = validate_scope_handle(*scope_, file.get());
+                    if (!scoped)
+                    {
+                        return std::unexpected(scoped.error());
+                    }
+                }
+                auto observed = quick_observe(file.get(), *canonical, roots_, volume_cache_, true);
+                if (!observed)
+                {
+                    return rejected(observed.error());
+                }
+                if (!observed->target.directory)
+                {
+                    return emit(std::move(observed->target));
+                }
+                handle directory(CreateFileW(canonical->c_str(), FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES,
+                    FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+                    FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_POSIX_SEMANTICS, nullptr));
+                if (!directory)
+                {
+                    observed->target.preparation_error = fail("quick_directory_enumeration_open_failed");
+                    return emit(std::move(observed->target));
+                }
+                auto lease = std::make_shared<ancestry>();
+                lease->parent = std::move(value.ancestors);
+                lease->owned = std::move(owned);
+                lease->owned.push_back(std::move(directory));
+                const auto retained_handles = static_cast<std::uint64_t>(lease->owned.size());
+                const auto retained_bytes = static_cast<std::uint64_t>(sizeof(ancestry)) +
+                    static_cast<std::uint64_t>(lease->owned.capacity()) * sizeof(handle) * 4 + retained_handles * 4096;
+                {
+                    const std::scoped_lock lock(state.mutex);
+                    const std::scoped_lock lease_lock(state.leases->mutex);
+                    if (state.leases->bytes > state.budget || retained_bytes > state.budget - state.leases->bytes ||
+                        state.work_bytes > state.budget - state.leases->bytes - retained_bytes ||
+                        retained_handles > state.leases->handle_limit ||
+                        state.leases->handles > state.leases->handle_limit - retained_handles)
+                    {
+                        return std::unexpected(fail("quick_preparation_lease_budget_exceeded", ERROR_NOT_ENOUGH_MEMORY));
+                    }
+                    state.leases->bytes += retained_bytes;
+                    state.leases->handles += retained_handles;
+                    lease->byte_charge = retained_bytes;
+                    lease->handle_charge = retained_handles;
+                    lease->accounting = state.leases;
+                }
+                WIN32_FIND_DATAW entry{};
+                quick_search search(FindFirstFileExW((*canonical + L"\\*").c_str(), FindExInfoBasic, &entry,
+                    FindExSearchNameMatch, nullptr, FIND_FIRST_EX_LARGE_FETCH | FIND_FIRST_EX_CASE_SENSITIVE));
+                if (search.get() == INVALID_HANDLE_VALUE)
+                {
+                    const auto native = GetLastError();
+                    if (native != ERROR_FILE_NOT_FOUND)
+                    {
+                        observed->target.preparation_error = fail("quick_directory_enumeration_failed", native);
+                    }
+                    return emit(std::move(observed->target));
+                }
+                for (;;)
+                {
+                    const std::wstring_view name(entry.cFileName);
+                    if (name != L"." && name != L"..")
+                    {
+                        auto queued = schedule_child(work{*canonical + L"\\" + std::wstring(name), lease, value.depth + 1});
+                        if (!queued)
+                        {
+                            return queued;
+                        }
+                    }
+                    if (cancelled())
+                    {
+                        return std::unexpected(fail("quick_preparation_cancelled", ERROR_CANCELLED));
+                    }
+                    if (!FindNextFileW(search.get(), &entry))
+                    {
+                        const auto native = GetLastError();
+                        if (native != ERROR_NO_MORE_FILES)
+                        {
+                            observed->target.preparation_error = fail("quick_directory_enumeration_interrupted", native);
+                        }
+                        break;
+                    }
+                }
+                // CONTRACT: One final directory record, including its complete
+                // immediate enumeration diagnostic; staging sorts/deduplicates.
+                return emit(std::move(observed->target));
+            };
+            worker = [&]()
+            {
+                quick_privileges privileges;
+                auto enabled = privileges.enable(false);
+                if (!enabled)
+                {
+                    fail_work(enabled.error());
+                    return;
+                }
+                try
+                {
+                    for (;;)
+                    {
+                        work current;
+                        {
+                            std::unique_lock lock(state.mutex);
+                            state.leases->changed.wait(lock, [&]()
+                            {
+                                return state.stopping || (!state.pending.empty() && state.active < state.admitted_workers);
+                            });
+                            if (state.stopping)
+                            {
+                                break;
+                            }
+                            current = std::move(state.pending.front());
+                            state.pending.pop_front();
+                            state.queued_bytes -= current.charge;
+                            ++state.active;
+                        }
+                        auto completed = process(current);
+                        release_work(current);
+                        if (!completed)
+                        {
+                            fail_work(completed.error());
+                            break;
+                        }
+                    }
+                }
+                catch (const std::bad_alloc&)
+                {
+                    fail_work(fail("quick_preparation_allocation_failed", ERROR_NOT_ENOUGH_MEMORY));
+                }
+                catch (...)
+                {
+                    fail_work(fail("quick_preparation_worker_failed", ERROR_GEN_FAILURE));
+                }
+                auto restored = privileges.restore();
+                if (!restored)
+                {
+                    halted_.store(true);
+                    fail_work(restored.error());
+                }
+            };
+
+            quick_privileges producer_privileges;
+            auto producer_enabled = producer_privileges.enable(false);
+            if (!producer_enabled)
+            {
+                return producer_enabled;
             }
-            return prepared;
+            bool any_input{};
+            try
+            {
+                for (;;)
+                {
+                    if (cancelled())
+                    {
+                        fail_work(fail("quick_preparation_cancelled", ERROR_CANCELLED));
+                        break;
+                    }
+                    auto next = input.next();
+                    if (!next)
+                    {
+                        fail_work(next.error());
+                        break;
+                    }
+                    if (!*next)
+                    {
+                        break;
+                    }
+                    any_input = true;
+                    auto decoded = wide(**next);
+                    auto normalized = decoded ? absolute(*decoded) : result<std::wstring>(std::unexpected(decoded.error()));
+                    if (!normalized)
+                    {
+                        quick::target rejected;
+                        rejected.path = std::move(**next);
+                        rejected.preparation_error = normalized.error();
+                        auto appended = emit(std::move(rejected));
+                        if (!appended)
+                        {
+                            fail_work(appended.error());
+                            break;
+                        }
+                        continue;
+                    }
+                    if (scope_ && !scope_contains(*scope_, *normalized))
+                    {
+                        fail_work(fail("quick_target_outside_scope", ERROR_ACCESS_DENIED));
+                        break;
+                    }
+                    work value{std::move(*normalized), {}, 0};
+                    value.charge = charge_work(value);
+                    {
+                        std::unique_lock lock(state.mutex);
+                        const auto queue_budget = state.budget / 2;
+                        if (value.charge > queue_budget)
+                        {
+                            lock.unlock();
+                            fail_work(fail("quick_preparation_working_set_exceeded", ERROR_NOT_ENOUGH_MEMORY));
+                            break;
+                        }
+                        // CONCURRENCY: Retained-lease bytes have their own mutex.
+                        // A bounded recheck avoids a lost notification between
+                        // inspecting that budget and sleeping on the queue mutex.
+                        while (!state.leases->changed.wait_for(lock, std::chrono::milliseconds(100), [&]()
+                        {
+                            return state.stopping || value.charge > state.budget / 2 ||
+                                (state.queued_bytes <= state.budget / 2 - value.charge && fits_work(value.charge));
+                        }))
+                        {
+                            if (controls.request.load() != control_request::proceed)
+                            {
+                                lock.unlock();
+                                fail_work(fail("quick_preparation_cancelled", ERROR_CANCELLED));
+                                lock.lock();
+                            }
+                        }
+                        if (state.stopping)
+                        {
+                            break;
+                        }
+                        if (value.charge > state.budget / 2)
+                        {
+                            lock.unlock();
+                            fail_work(fail("quick_preparation_working_set_exceeded", ERROR_NOT_ENOUGH_MEMORY));
+                            break;
+                        }
+                        state.work_bytes += value.charge;
+                        state.queued_bytes += value.charge;
+                        state.pending.push_back(std::move(value));
+                        state.leases->changed.notify_all();
+                    }
+                    grow_workers();
+                }
+                {
+                    std::unique_lock lock(state.mutex);
+                    state.leases->changed.wait(lock, [&]()
+                    {
+                        return state.stopping || (state.pending.empty() && state.active == 0);
+                    });
+                    state.stopping = true;
+                    state.leases->changed.notify_all();
+                }
+            }
+            catch (const std::bad_alloc&)
+            {
+                fail_work(fail("quick_preparation_allocation_failed", ERROR_NOT_ENOUGH_MEMORY));
+            }
+            catch (...)
+            {
+                fail_work(fail("quick_preparation_worker_start_failed", ERROR_GEN_FAILURE));
+            }
+            {
+                // CONTRACT: No writer can still grow the pool after stopping.
+                // Join without holding either the queue or worker-vector mutex.
+                std::vector<std::jthread> joining;
+                {
+                    const std::scoped_lock lock(workers_mutex);
+                    joining = std::move(workers);
+                }
+                joining.clear();
+            }
+            {
+                std::deque<work> discarded;
+                {
+                    const std::scoped_lock lock(state.mutex);
+                    discarded.swap(state.pending);
+                }
+                discarded.clear();
+            }
+            auto producer_restored = producer_privileges.restore();
+            if (!producer_restored)
+            {
+                halted_.store(true);
+                return producer_restored;
+            }
+            if (state.failure)
+            {
+                return std::unexpected(*state.failure);
+            }
+            if (!any_input)
+            {
+                return std::unexpected(fail("quick_input_empty", ERROR_INVALID_PARAMETER));
+            }
+            if (controls.request.load() != control_request::proceed)
+            {
+                return std::unexpected(fail("quick_preparation_cancelled", ERROR_CANCELLED));
+            }
+            return {};
         }
 
         result<quick::space_sample> sample_space(std::string_view volume_key) override
@@ -2634,7 +3262,7 @@ namespace
             }
             // SECURITY: Never accept a user path, suffix, drive alias, UNC or unobserved
             // volume. This immutable allowlist comes from successfully prepared handles.
-            if (!quick_volume_key_valid(volume_key) || !known_volumes_.contains(volume_key))
+            if (!quick_volume_key_valid(volume_key) || !known_volume(volume_key))
             {
                 return std::unexpected(fail("quick_space_volume_not_prepared", ERROR_INVALID_PARAMETER));
             }
@@ -2742,6 +3370,37 @@ namespace
             return {};
         }
 
+        bool known_volume(std::string_view key)
+        {
+            const std::scoped_lock lock(volumes_mutex_);
+            return known_volumes_.contains(key);
+        }
+
+        std::size_t preparation_worker_limit(const quick::resource_sample& sample) const
+        {
+            const auto memory = (std::min)(sample.available_memory_bytes, sample.available_commit_bytes);
+            // RESOURCE: Reserve stack/metadata/temporary open headroom per
+            // worker, separately from the retained-lease quarter-budget.
+            const auto memory_threads = memory / (8 * 1024 * 1024);
+            const auto active_handles = sample.available_handles - sample.available_handles / 4;
+            const auto handle_threads = active_handles / (4 * maximum_depth + 16);
+            auto limit = (std::min)(static_cast<std::uint64_t>(sample.logical_processors),
+                (std::min)(memory_threads, handle_threads));
+            if (limit != 0 && sample.cpu_pressure_known && sample.cpu_pressure >= 85)
+            {
+                limit = (std::max)(std::uint64_t{1}, limit / 4);
+            }
+            return static_cast<std::size_t>(limit);
+        }
+
+        void reduce_preparation_budget(std::uint64_t value)
+        {
+            auto prior = preparation_budget_.load();
+            while (value < prior && !preparation_budget_.compare_exchange_weak(prior, value))
+            {
+            }
+        }
+
         result<void> append_target(std::vector<quick::target>& output, quick::target value,
             std::size_t& text_bytes)
         {
@@ -2752,8 +3411,7 @@ namespace
                 {
                     return std::unexpected(fresh.error());
                 }
-                preparation_budget_ = (std::min)(preparation_budget_,
-                    (std::min)(fresh->available_memory_bytes, fresh->available_commit_bytes) / 8);
+                reduce_preparation_budget((std::min)(fresh->available_memory_bytes, fresh->available_commit_bytes) / 8);
             }
             constexpr std::uint64_t diagnostic_reserve = 512;
             const auto text = static_cast<std::uint64_t>(value.path.size()) + value.identity.size() +
@@ -2764,7 +3422,8 @@ namespace
                 return std::unexpected(fail("quick_preparation_size_overflow", ERROR_ARITHMETIC_OVERFLOW));
             }
             const auto additional = text * 8 + overhead;
-            if (text_bytes > preparation_budget_ || additional > preparation_budget_ - text_bytes)
+            const auto budget = preparation_budget_.load();
+            if (text_bytes > budget || additional > budget - text_bytes)
             {
                 return std::unexpected(fail("quick_preparation_resource_budget_exceeded", ERROR_NOT_ENOUGH_MEMORY));
             }
@@ -3013,209 +3672,17 @@ namespace
             return {};
         }
 
-        result<std::vector<quick::target>> prepare_paths(const std::vector<std::string>& paths,
-            control& controls)
-        {
-            if (paths.empty())
-            {
-                return std::unexpected(fail("quick_input_empty", ERROR_INVALID_PARAMETER));
-            }
-            std::vector<quick::target> output;
-            std::set<std::wstring> seen;
-            std::size_t text_bytes{};
-            for (const auto& text : paths)
-            {
-                if (text.empty() || text.size() > 131072)
-                {
-                    return std::unexpected(fail("quick_input_path_limit", ERROR_INVALID_NAME));
-                }
-                if (controls.request.load() != control_request::proceed)
-                {
-                    return std::unexpected(fail("quick_preparation_cancelled", ERROR_CANCELLED));
-                }
-                auto decoded = wide(text);
-                auto path = decoded ? absolute(*decoded) : result<std::wstring>(std::unexpected(decoded.error()));
-                if (!path)
-                {
-                    quick::target rejected;
-                    rejected.path = text;
-                    rejected.preparation_error = path.error();
-                    auto added = append_target(output, std::move(rejected), text_bytes);
-                    if (!added)
-                    {
-                        return std::unexpected(added.error());
-                    }
-                    continue;
-                }
-                if (scope_ && !scope_contains(*scope_, *path))
-                {
-                    return std::unexpected(fail("quick_target_outside_scope", ERROR_ACCESS_DENIED));
-                }
-                auto added = enumerate(*path, output, seen, text_bytes, controls, 0);
-                if (!added)
-                {
-                    return std::unexpected(added.error());
-                }
-            }
-            return output;
-        }
-
-        result<void> enumerate(const std::wstring& path, std::vector<quick::target>& output,
-            std::set<std::wstring>& seen, std::size_t& text_bytes, control& controls, std::size_t depth,
-            std::span<const HANDLE> inherited_ancestors = {})
-        {
-            if (controls.request.load() != control_request::proceed)
-            {
-                return std::unexpected(fail("quick_preparation_cancelled", ERROR_CANCELLED));
-            }
-            auto record_failure = [&](error reason) -> result<void>
-            {
-                auto text = utf8(path);
-                if (!text)
-                {
-                    return std::unexpected(text.error());
-                }
-                quick::target rejected;
-                rejected.path = std::move(*text);
-                rejected.preparation_error = std::move(reason);
-                return append_target(output, std::move(rejected), text_bytes);
-            };
-            if (depth > maximum_depth)
-            {
-                return record_failure(fail("quick_depth_limit", ERROR_BUFFER_OVERFLOW));
-            }
-            std::vector<handle> ancestors;
-            std::vector<HANDLE> ancestor_handles(inherited_ancestors.begin(), inherited_ancestors.end());
-            if (inherited_ancestors.empty())
-            {
-                auto pinned = pin_ancestors(path, true);
-                if (!pinned)
-                {
-                    return record_failure(pinned.error());
-                }
-                ancestors = std::move(*pinned);
-                for (const auto& ancestor : ancestors)
-                {
-                    ancestor_handles.push_back(ancestor.get());
-                }
-                auto scoped = validate_scope(scope_);
-                if (!scoped)
-                {
-                    return std::unexpected(scoped.error());
-                }
-            }
-            for (const auto ancestor : ancestor_handles)
-            {
-                FILE_ATTRIBUTE_TAG_INFO tag{};
-                if (!GetFileInformationByHandleEx(ancestor, FileAttributeTagInfo, &tag, sizeof(tag)))
-                {
-                    return record_failure(fail("quick_ancestor_attributes_changed"));
-                }
-                if (!(tag.FileAttributes & FILE_ATTRIBUTE_DIRECTORY) || (tag.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT))
-                {
-                    return record_failure(fail("quick_reparse_ancestor_denied", ERROR_ACCESS_DENIED));
-                }
-            }
-            handle file(CreateFileW(path.c_str(), FILE_READ_ATTRIBUTES | READ_CONTROL,
-                FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
-                FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_POSIX_SEMANTICS, nullptr));
-            if (!file)
-            {
-                return record_failure(fail("quick_preparation_open_failed"));
-            }
-            auto canonical = final_name(file.get());
-            if (!canonical)
-            {
-                return record_failure(canonical.error());
-            }
-            if (scope_ && !scope_contains(*scope_, *canonical))
-            {
-                return std::unexpected(fail("quick_target_outside_scope", ERROR_ACCESS_DENIED));
-            }
-            if (scope_ && *canonical == scope_->path)
-            {
-                auto scoped = validate_scope_handle(*scope_, file.get());
-                if (!scoped)
-                {
-                    return std::unexpected(scoped.error());
-                }
-            }
-            if (!seen.insert(*canonical).second)
-            {
-                return {};
-            }
-            auto observed = quick_observe(file.get(), *canonical, roots_, volume_cache_, true);
-            if (!observed)
-            {
-                return record_failure(observed.error());
-            }
-            const auto index = output.size();
-            auto recorded = append_target(output, std::move(observed->target), text_bytes);
-            if (!recorded)
-            {
-                return recorded;
-            }
-            if (!output[index].directory)
-            {
-                return {};
-            }
-            // SECURITY: Directory and ancestor pins prevent namespace redirection. Missing
-            // or inaccessible descendants become failures; siblings continue to be frozen.
-            handle directory(CreateFileW(canonical->c_str(), FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES,
-                FILE_SHARE_READ, nullptr, OPEN_EXISTING,
-                FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_POSIX_SEMANTICS, nullptr));
-            if (!directory)
-            {
-                output[index].preparation_error = fail("quick_directory_enumeration_open_failed");
-                return {};
-            }
-            ancestor_handles.push_back(directory.get());
-            WIN32_FIND_DATAW entry{};
-            quick_search search(FindFirstFileExW((*canonical + L"\\*").c_str(), FindExInfoBasic, &entry,
-                FindExSearchNameMatch, nullptr, FIND_FIRST_EX_LARGE_FETCH | FIND_FIRST_EX_CASE_SENSITIVE));
-            if (search.get() == INVALID_HANDLE_VALUE)
-            {
-                const DWORD native = GetLastError();
-                if (native != ERROR_FILE_NOT_FOUND)
-                {
-                    output[index].preparation_error = fail("quick_directory_enumeration_failed", native);
-                }
-                return {};
-            }
-            for (;;)
-            {
-                const std::wstring_view name(entry.cFileName);
-                if (name != L"." && name != L"..")
-                {
-                    auto added = enumerate(*canonical + L"\\" + std::wstring(name), output, seen, text_bytes, controls, depth + 1, ancestor_handles);
-                    if (!added)
-                    {
-                        return added;
-                    }
-                }
-                if (!FindNextFileW(search.get(), &entry))
-                {
-                    const DWORD native = GetLastError();
-                    if (native != ERROR_NO_MORE_FILES)
-                    {
-                        output[index].preparation_error = fail("quick_directory_enumeration_interrupted", native);
-                    }
-                    break;
-                }
-            }
-            return {};
-        }
-
         std::wstring state_path_;
         std::optional<scope_binding> scope_;
         std::vector<std::wstring> roots_;
+        std::mutex volumes_mutex_;
         std::set<std::string, std::less<>> known_volumes_;
         quick_volume_cache volume_cache_;
         std::mutex resource_mutex_;
         quick_cpu_counter cpu_counter_;
         std::size_t physical_cores_{};
         std::map<std::string, quick_storage_profile, std::less<>> storage_profiles_;
-        std::uint64_t preparation_budget_{};
+        std::atomic_uint64_t preparation_budget_{};
         std::uint64_t context_handle_budget_{};
         std::mutex context_mutex_;
         std::map<std::wstring, std::pair<std::shared_ptr<const std::vector<handle>>, ULONGLONG>> contexts_;

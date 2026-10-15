@@ -59,6 +59,7 @@ namespace
         std::shared_ptr<const engine::run_report> preceding_report;
         bool quick_mode{};
         bool awaiting_report{};
+        bool paged_quick{};
     };
 
     std::string queue_namespace_key(std::string_view path)
@@ -82,15 +83,16 @@ namespace
         std::shared_ptr<const engine::frozen_plan> plan,
         std::shared_ptr<const engine::run_report> preceding_report, bool resumed,
         const std::vector<std::string>& queue, std::uint64_t generation,
-        std::uint64_t preview_generation, bool quick_mode = false)
+        std::uint64_t preview_generation, bool quick_mode = false, bool paged_quick = false)
     {
-        if (!plan || queue.empty())
+        if (!plan || queue.empty() || (paged_quick && !quick_mode))
         {
             return std::nullopt;
         }
         if (resumed)
         {
-            if (!previous || previous->quick_mode != quick_mode || previous->plan->job_id != plan->job_id ||
+            if (!previous || previous->quick_mode != quick_mode || previous->paged_quick != paged_quick ||
+                previous->plan->job_id != plan->job_id ||
                 previous->plan->fingerprint != plan->fingerprint ||
                 previous->generation != generation || previous->roots != queue)
             {
@@ -101,14 +103,14 @@ namespace
         {
             return std::nullopt;
         }
-        return queue_run{std::move(plan), queue, generation, std::move(preceding_report), quick_mode, true};
+        return queue_run{std::move(plan), queue, generation, std::move(preceding_report), quick_mode, true, paged_quick};
     }
 
     bool reconcile_queue_report(std::optional<queue_run>& binding,
         std::vector<std::string>& queue, std::uint64_t& generation,
         const std::shared_ptr<const engine::run_report>& report, bool busy, bool executing)
     {
-        if (!binding || !binding->awaiting_report || busy || executing)
+        if (!binding || binding->paged_quick || !binding->awaiting_report || busy || executing)
         {
             return false;
         }
@@ -194,12 +196,76 @@ namespace
         }
         return true;
     }
+    bool reconcile_paged_queue_report(std::optional<queue_run>& binding,
+        std::vector<std::string>& queue, std::uint64_t& generation,
+        const std::shared_ptr<const engine::run_report>& report, bool busy, bool executing,
+        bool proof_ready, std::string_view proof_job, std::string_view proof_fingerprint,
+        std::span<const std::string> completed_inputs)
+    {
+        if (!binding || !binding->paged_quick || !binding->awaiting_report || busy || executing)
+        {
+            return false;
+        }
+        auto& run = *binding;
+        // SECURITY: Metadata-only reports contain no target outcomes. Only the
+        // worker's explicit original-input proof authorizes presentation removal.
+        if (!report || report == run.preceding_report || !proof_ready)
+        {
+            return false;
+        }
+        run.awaiting_report = false;
+        run.preceding_report.reset();
+        if (report->job_id != run.plan->job_id || report->plan_fingerprint != run.plan->fingerprint ||
+            proof_job != report->job_id || proof_fingerprint != report->plan_fingerprint ||
+            run.generation != generation || run.roots != queue)
+        {
+            binding.reset();
+            return false;
+        }
+        if (report->status != "completed" && report->status != "partial_failure" &&
+            report->status != "paused" && report->status != "cancelled_partial" &&
+            report->status != "audit_finalization_failed")
+        {
+            return false;
+        }
+        std::unordered_set<std::string_view> completed;
+        completed.reserve(completed_inputs.size());
+        for (const auto& path : completed_inputs)
+        {
+            completed.insert(path);
+        }
+        const auto removed = std::erase_if(queue, [&](const std::string& path)
+        {
+            return completed.contains(path);
+        });
+        if (removed == 0)
+        {
+            return false;
+        }
+        ++generation;
+        run.generation = generation;
+        run.roots = queue;
+        if (queue.empty())
+        {
+            binding.reset();
+        }
+        return true;
+    }
+
     struct confirmation_binding
     {
         std::string job_id;
         std::string fingerprint;
         std::uint64_t generation{};
         bool quick_mode{};
+    };
+
+    struct page_request_binding
+    {
+        std::string job_id;
+        std::string fingerprint;
+        std::uint64_t cursor{};
+        bool failures_only{};
     };
 
     bool confirmation_matches(const std::optional<confirmation_binding>& confirmation,
@@ -216,6 +282,13 @@ namespace
         {
             return outcome.code == "quick_not_attempted";
         });
+    }
+
+    bool paged_manual_recovery_allowed(std::size_t total, std::size_t attempted, std::size_t pending)
+    {
+        // SECURITY: Compact reports intentionally have no per-target vector.
+        // Explicit complete first-pass counts are required; zero is not success.
+        return total != 0 && attempted == total && pending == 0;
     }
 
     // END_GUI_QUEUE_CONTRACT
@@ -250,6 +323,11 @@ namespace
         std::size_t target_page{};
         std::size_t failure_page{};
         std::size_t report_page{};
+        std::uint64_t quick_preview_cursor{};
+        std::uint64_t quick_failure_cursor{};
+        std::vector<std::uint64_t> quick_preview_history;
+        std::vector<std::uint64_t> quick_failure_history;
+        std::optional<page_request_binding> page_request;
         int memory_budget_mib{64};
         int max_device_workers{4};
         int ssd_queue_depth{2};
@@ -376,8 +454,22 @@ namespace
 
     void reconcile_queue(application_state& state, const frontend::view_state& view)
     {
-        if (reconcile_queue_report(state.queue_execution, state.queue, state.queue_generation,
-                view.report, view.busy, view.executing))
+        bool changed{};
+        if (state.queue_execution && state.queue_execution->paged_quick)
+        {
+            const auto& proof = view.quick_completed_inputs;
+            changed = reconcile_paged_queue_report(state.queue_execution, state.queue, state.queue_generation,
+                view.report, view.busy, view.executing, static_cast<bool>(proof),
+                proof ? std::string_view(proof->job_id) : std::string_view{},
+                proof ? std::string_view(proof->fingerprint) : std::string_view{},
+                proof ? std::span<const std::string>(proof->paths) : std::span<const std::string>{});
+        }
+        else
+        {
+            changed = reconcile_queue_report(state.queue_execution, state.queue, state.queue_generation,
+                view.report, view.busy, view.executing);
+        }
+        if (changed)
         {
             state.irreversible = false;
             state.downgrade_tokens.clear();
@@ -688,6 +780,153 @@ namespace
         }
     }
 
+    void render_quick_page(application_state& state, const frontend::view_state& view, bool failures_only)
+    {
+        if (!view.quick_paged || !view.plan)
+        {
+            return;
+        }
+        auto& cursor = failures_only ? state.quick_failure_cursor : state.quick_preview_cursor;
+        auto& history = failures_only ? state.quick_failure_history : state.quick_preview_history;
+        const auto& page = view.quick_page_data;
+        const auto matching = [&]()
+        {
+            return page && page->job_id == view.plan->job_id && page->fingerprint == view.plan->fingerprint &&
+                page->offset == cursor && page->failures_only == failures_only;
+        };
+        const auto invalidate_page = [&]()
+        {
+            state.page_request.reset();
+            if (failures_only)
+            {
+                state.selected_failure_path.clear();
+                state.force_process.reset();
+                state.force_confirmation.reset();
+            }
+        };
+        ImGui::PushID(failures_only ? "incomplete_page" : "preview_page");
+        ImGui::BeginDisabled(cursor == 0);
+        if (ImGui::SmallButton("First"))
+        {
+            cursor = 0;
+            history.clear();
+            invalidate_page();
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        ImGui::BeginDisabled(history.empty());
+        if (ImGui::SmallButton("Previous"))
+        {
+            cursor = history.back();
+            history.pop_back();
+            invalidate_page();
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        const bool next = matching() && page->next_offset > cursor && page->next_offset < view.quick_total;
+        ImGui::BeginDisabled(!next);
+        if (ImGui::SmallButton("Next"))
+        {
+            try
+            {
+                history.push_back(cursor);
+                cursor = page->next_offset;
+                invalidate_page();
+            }
+            catch (const std::bad_alloc&)
+            {
+                state.ui_error = "page_memory";
+            }
+        }
+        ImGui::EndDisabled();
+        if (!matching())
+        {
+            const bool requested = state.page_request && state.page_request->job_id == view.plan->job_id &&
+                state.page_request->fingerprint == view.plan->fingerprint && state.page_request->cursor == cursor &&
+                state.page_request->failures_only == failures_only;
+            if (!view.quick_page_loading && !requested)
+            {
+                state.page_request = page_request_binding{view.plan->job_id, view.plan->fingerprint, cursor, failures_only};
+                if (!state.app.request_quick_page(cursor, failures_only))
+                {
+                    state.ui_error = "page_not_started";
+                }
+            }
+            ImGui::TextDisabled(view.quick_page_loading ? "Loading targets..." : "Target page is not available yet.");
+            if (!view.quick_page_loading && requested && ImGui::SmallButton("Retry page"))
+            {
+                state.page_request.reset();
+            }
+            ImGui::PopID();
+            return;
+        }
+        // SECURITY: Page metadata is bound to this exact plan. Empty items never
+        // certify completion, and source cursors do not count filtered results.
+        if (page->items.size() > 128 || page->next_offset < page->offset || page->next_offset > view.quick_total)
+        {
+            ImGui::TextUnformatted("Target page binding is invalid.");
+            ImGui::PopID();
+            return;
+        }
+        ImGui::SameLine();
+        ImGui::Text("Showing %zu targets | Total %llu", page->items.size(), static_cast<unsigned long long>(page->total));
+        if (page->items.empty())
+        {
+            ImGui::TextDisabled("No matching rows on this page.");
+        }
+        if (ImGui::BeginTable("paged_targets", 2, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
+                ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY, ImVec2(0, 210)))
+        {
+            ImGui::TableSetupColumn("Target", ImGuiTableColumnFlags_WidthStretch, 3.0F);
+            ImGui::TableSetupColumn(failures_only ? "Result" : "Mode", ImGuiTableColumnFlags_WidthStretch, 1.5F);
+            ImGui::TableSetupScrollFreeze(0, 1);
+            ImGui::TableHeadersRow();
+            ImGuiListClipper clipper;
+            clipper.Begin(static_cast<int>(page->items.size()));
+            while (clipper.Step())
+            {
+                for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row)
+                {
+                    const auto& item = page->items[static_cast<std::size_t>(row)];
+                    ImGui::PushID(row);
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    const bool selected = failures_only ? state.selected_failure_path == item.target.path :
+                        state.selected_target == item.index;
+                    if (selectable_path(item.target.path, selected))
+                    {
+                        if (failures_only)
+                        {
+                            state.selected_failure_path = item.target.path;
+                            state.force_process.reset();
+                            state.force_confirmation.reset();
+                        }
+                        else
+                        {
+                            state.selected_target = static_cast<std::size_t>(item.index);
+                        }
+                    }
+                    if (ImGui::IsItemHovered() && item.outcome)
+                    {
+                        ImGui::SetTooltip("%s | native %u", item.outcome->code.c_str(), item.outcome->native_code);
+                    }
+                    ImGui::TableSetColumnIndex(1);
+                    if (item.outcome)
+                    {
+                        ImGui::TextUnformatted(item.outcome->code.c_str());
+                    }
+                    else
+                    {
+                        ImGui::TextUnformatted(item.target.preparation_error.code.empty() ? "Quick delete" : "Unavailable");
+                    }
+                    ImGui::PopID();
+                }
+            }
+            ImGui::EndTable();
+        }
+        ImGui::PopID();
+    }
+
     void render_preview(application_state& state, const frontend::view_state& view)
     {
         if (state.preparation_requested)
@@ -711,6 +950,9 @@ namespace
                     state.queue_generation, view.quick_mode};
                 state.selected_target = 0;
                 state.target_page = 0;
+                state.quick_preview_cursor = 0;
+                state.quick_preview_history.clear();
+                state.page_request.reset();
                 state.confirmation_visible = true;
                 ImGui::OpenPopup("Confirm batch");
             }
@@ -726,7 +968,8 @@ namespace
             }
             else
             {
-                ImGui::Text("%s | %zu frozen targets", view.quick_mode ? "Quick delete" : "Overwrite and verify", view.plan->targets.size());
+                ImGui::Text("%s | %zu frozen targets", view.quick_mode ? "Quick delete" : "Overwrite and verify",
+                    view.quick_paged ? view.quick_total : view.plan->targets.size());
                 ImGui::TextWrapped("Only these frozen targets are eligible. New or replaced objects are excluded.");
                 if (view.quick_mode)
                 {
@@ -735,7 +978,14 @@ namespace
                         "Permanently delete names without overwriting. Access and lock recovery follow the first pass.");
                     if (ImGui::CollapsingHeader("Review frozen targets"))
                     {
-                        render_target_preview(state, *view.plan, true);
+                        if (view.quick_paged)
+                        {
+                            render_quick_page(state, view, false);
+                        }
+                        else
+                        {
+                            render_target_preview(state, *view.plan, true);
+                        }
                     }
                 }
                 else
@@ -752,7 +1002,7 @@ namespace
             {
                 auto queue_binding = bind_queue_run(state.queue_execution, view.plan, view.report,
                     view.resume_loaded || state.retry_requested, state.queue, state.queue_generation,
-                    state.preview_generation, view.quick_mode);
+                    state.preview_generation, view.quick_mode, view.quick_paged);
                 std::vector<std::string> tokens(state.downgrade_tokens.begin(), state.downgrade_tokens.end());
                 bool accepted{};
                 const bool configured = view.quick_mode ? state.app.configure_quick({}) :
@@ -1048,28 +1298,35 @@ namespace
         if (view.report)
         {
             ImGui::Text("Job: %s | %s", view.report->job_id.c_str(), view.report->status.c_str());
-            if (ImGui::Button("Copy JSON report"))
+            if (ImGui::Button(view.quick_paged ? "Copy summary JSON" : "Copy JSON report"))
             {
                 const auto report = frontend::report_json(*view.report);
                 ImGui::SetClipboardText(report.c_str());
             }
-            const int visible_outcomes = list_page("outcome_pages", view.report->targets.size(), state.report_page);
-            if (ImGui::BeginChild("raw_outcomes", ImVec2(0, 160), ImGuiChildFlags_Borders))
+            if (view.quick_paged)
             {
-                ImGuiListClipper clipper;
-                clipper.Begin(visible_outcomes);
-                while (clipper.Step())
+                ImGui::TextDisabled("The summary is separate from the streamed per-target report.");
+            }
+            else
+            {
+                const int visible_outcomes = list_page("outcome_pages", view.report->targets.size(), state.report_page);
+                if (ImGui::BeginChild("raw_outcomes", ImVec2(0, 160), ImGuiChildFlags_Borders))
                 {
-                    for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row)
+                    ImGuiListClipper clipper;
+                    clipper.Begin(visible_outcomes);
+                    while (clipper.Step())
                     {
-                        const auto& outcome = view.report->targets[state.report_page + static_cast<std::size_t>(row)];
-                        ImGui::Text("%s | %s | deleted %s | verified %s | native %u", outcome.identity.c_str(),
-                            outcome.code.c_str(), outcome.deleted ? "yes" : "no",
-                            outcome.logical_overwrite_verified ? "yes" : "no", outcome.native_code);
+                        for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row)
+                        {
+                            const auto& outcome = view.report->targets[state.report_page + static_cast<std::size_t>(row)];
+                            ImGui::Text("%s | %s | deleted %s | verified %s | native %u", outcome.identity.c_str(),
+                                outcome.code.c_str(), outcome.deleted ? "yes" : "no",
+                                outcome.logical_overwrite_verified ? "yes" : "no", outcome.native_code);
+                        }
                     }
                 }
+                ImGui::EndChild();
             }
-            ImGui::EndChild();
         }
         if (ImGui::BeginChild("events", ImVec2(0, 150), ImGuiChildFlags_Borders))
         {
@@ -1156,6 +1413,15 @@ namespace
         {
             return;
         }
+        if (view.quick_paged)
+        {
+            state.failure_recovery_ready = paged_manual_recovery_allowed(view.quick_total,
+                view.quick_attempted, view.quick_pending);
+            state.quick_failure_cursor = 0;
+            state.quick_failure_history.clear();
+            state.page_request.reset();
+            return;
+        }
         state.failure_recovery_ready = manual_recovery_allowed(*view.report, view.quick_mode);
         std::unordered_map<std::string_view, const engine::target_snapshot*> targets;
         targets.reserve(state.last_run_plan->targets.size());
@@ -1184,12 +1450,36 @@ namespace
     bool current_failure(const application_state& state, const frontend::view_state& view,
         const std::string& path)
     {
-        return !view.busy && !view.executing && view.report && view.report == state.failure_report &&
-            state.last_run_plan && view.report->job_id == state.last_run_plan->job_id &&
-            state.last_run_quick == view.quick_mode && state.failure_recovery_ready &&
-            state.failed_targets.contains(path) && state.failed_targets.at(path)->support != engine::capability::blocked &&
-            (!view.quick_mode || (view.plan && view.plan->job_id == state.last_run_plan->job_id &&
-                view.plan->fingerprint == state.last_run_plan->fingerprint));
+        if (view.busy || view.executing || !view.report || view.report != state.failure_report ||
+            !state.last_run_plan || view.report->job_id != state.last_run_plan->job_id ||
+            state.last_run_quick != view.quick_mode || !state.failure_recovery_ready)
+        {
+            return false;
+        }
+        if (view.quick_mode && (!view.plan || view.plan->job_id != state.last_run_plan->job_id ||
+            view.plan->fingerprint != state.last_run_plan->fingerprint))
+        {
+            return false;
+        }
+        if (view.quick_paged)
+        {
+            const auto& page = view.quick_page_data;
+            if (!paged_manual_recovery_allowed(view.quick_total, view.quick_attempted, view.quick_pending) ||
+                !page || !page->failures_only || page->job_id != view.report->job_id ||
+                page->fingerprint != state.last_run_plan->fingerprint || page->offset != state.quick_failure_cursor)
+            {
+                return false;
+            }
+            return std::ranges::any_of(page->items, [&](const auto& item)
+            {
+                return item.index < view.quick_total && item.target.path == path && item.outcome &&
+                    !successful_outcome(*item.outcome) && item.outcome->code != "quick_not_attempted" &&
+                    item.outcome->code != "quick_device_stopped" &&
+                    item.target.preparation_error.code.empty();
+            });
+        }
+        return state.failed_targets.contains(path) &&
+            state.failed_targets.at(path)->support != engine::capability::blocked;
     }
 
     void render_locks(application_state& state, const frontend::view_state& view)
@@ -1291,7 +1581,9 @@ namespace
         {
             return;
         }
-        if (!state.failed_outcomes.empty())
+        const auto incomplete = view.quick_paged ? view.quick_total - (std::min)(view.quick_total, view.completed_count) :
+            state.failed_outcomes.size();
+        if (incomplete != 0)
         {
             ImGui::BeginDisabled(view.busy);
             if (ImGui::Button("Review incomplete targets"))
@@ -1301,9 +1593,9 @@ namespace
             }
             ImGui::EndDisabled();
         }
-        if (view.quick_mode && view.plan && !state.failed_outcomes.empty() && view.report->status != "completed")
+        if (view.quick_mode && view.plan && incomplete != 0 && view.report->status != "completed")
         {
-            if (!state.failed_outcomes.empty())
+            if (incomplete != 0)
             {
                 ImGui::SameLine();
             }
@@ -1325,30 +1617,37 @@ namespace
             ImGui::TextWrapped(state.failure_recovery_ready ?
                 "The first pass has finished. Only incomplete frozen targets are listed." :
                 "The first pass is incomplete. Continue this job before resolving locks.");
-            const int visible_failures = list_page("failure_pages", state.failed_outcomes.size(), state.failure_page);
-            if (ImGui::BeginChild("failed_targets", ImVec2(0, 190), ImGuiChildFlags_Borders))
+            if (view.quick_paged)
             {
-                ImGuiListClipper clipper;
-                clipper.Begin(visible_failures);
-                while (clipper.Step())
+                render_quick_page(state, view, true);
+            }
+            else
+            {
+                const int visible_failures = list_page("failure_pages", state.failed_outcomes.size(), state.failure_page);
+                if (ImGui::BeginChild("failed_targets", ImVec2(0, 190), ImGuiChildFlags_Borders))
                 {
-                    for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row)
+                    ImGuiListClipper clipper;
+                    clipper.Begin(visible_failures);
+                    while (clipper.Step())
                     {
-                        const auto& [target, outcome] = state.failed_outcomes[state.failure_page + static_cast<std::size_t>(row)];
-                        ImGui::PushID(row);
-                        if (selectable_path(target->path, state.selected_failure_path == target->path))
+                        for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row)
                         {
-                            state.selected_failure_path = target->path;
+                            const auto& [target, outcome] = state.failed_outcomes[state.failure_page + static_cast<std::size_t>(row)];
+                            ImGui::PushID(row);
+                            if (selectable_path(target->path, state.selected_failure_path == target->path))
+                            {
+                                state.selected_failure_path = target->path;
+                            }
+                            if (ImGui::IsItemHovered())
+                            {
+                                ImGui::SetTooltip("%s | native %u", outcome->code.c_str(), outcome->native_code);
+                            }
+                            ImGui::PopID();
                         }
-                        if (ImGui::IsItemHovered())
-                        {
-                            ImGui::SetTooltip("%s | native %u", outcome->code.c_str(), outcome->native_code);
-                        }
-                        ImGui::PopID();
                     }
                 }
+                ImGui::EndChild();
             }
-            ImGui::EndChild();
             const bool selected = current_failure(state, view, state.selected_failure_path);
             ImGui::BeginDisabled(!selected || state.exit_requested);
             if (ImGui::Button("Inspect locks for selected failure"))

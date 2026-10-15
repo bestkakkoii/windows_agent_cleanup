@@ -6,6 +6,7 @@ import secure_erase.cli_arguments;
 import secure_erase.agent_protocol;
 import secure_erase.engine;
 import secure_erase.quick_delete;
+import secure_erase.quick_store;
 import secure_erase.windows_backend;
 import secure_erase.state_store;
 import secure_erase.crypto;
@@ -339,22 +340,17 @@ namespace
         return require(agent::normalize_path(utf8(canonical)));
     }
 
-    manifest_input read_manifest(const cli::arguments& args, bool grants_only)
+    std::unique_ptr<handle> open_manifest(const cli::arguments& args)
     {
-        manifest_input result;
-        if (args.manifest.empty())
-        {
-            return result;
-        }
         const auto path = require(agent::normalize_path(args.manifest));
         if (agent::within_scope(path, args.root))
         {
             fail("manifest_must_be_outside_scope");
         }
-        handle input(CreateFileW(native_path(path).c_str(), GENERIC_READ, FILE_SHARE_READ,
+        auto input = std::make_unique<handle>(CreateFileW(native_path(path).c_str(), GENERIC_READ, FILE_SHARE_READ,
             nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_SEQUENTIAL_SCAN, nullptr));
         FILE_ATTRIBUTE_TAG_INFO attributes{};
-        if (!input.valid() || !GetFileInformationByHandleEx(input.get(), FileAttributeTagInfo,
+        if (!input->valid() || !GetFileInformationByHandleEx(input->get(), FileAttributeTagInfo,
             &attributes, static_cast<DWORD>(sizeof(attributes))))
         {
             fail("manifest_open_failed", GetLastError());
@@ -364,7 +360,7 @@ namespace
             fail("manifest_regular_file_required");
         }
         std::wstring canonical(32768, L'\0');
-        const auto length = GetFinalPathNameByHandleW(input.get(), canonical.data(),
+        const auto length = GetFinalPathNameByHandleW(input->get(), canonical.data(),
             static_cast<DWORD>(canonical.size()), FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
         if (length == 0 || length >= canonical.size())
         {
@@ -375,6 +371,17 @@ namespace
         {
             fail("manifest_must_be_outside_scope");
         }
+        return input;
+    }
+
+    manifest_input read_manifest(const cli::arguments& args, bool grants_only)
+    {
+        manifest_input result;
+        if (args.manifest.empty())
+        {
+            return result;
+        }
+        auto input = open_manifest(args);
         const auto budget = input_budget(args);
         std::array<char, 64 * 1024> buffer{};
         std::string line;
@@ -423,7 +430,7 @@ namespace
                 fail("cancelled_before_admission", 0, 5);
             }
             DWORD count{};
-            if (!ReadFile(input.get(), buffer.data(), static_cast<DWORD>(buffer.size()), &count, nullptr))
+            if (!ReadFile(input->get(), buffer.data(), static_cast<DWORD>(buffer.size()), &count, nullptr))
             {
                 fail("manifest_read_failed", GetLastError());
             }
@@ -457,6 +464,89 @@ namespace
         }
         return result;
     }
+
+    class manifest_roots final : public quick::root_source
+    {
+    public:
+        explicit manifest_roots(const cli::arguments& args) : args_(args), input_(open_manifest(args))
+        {
+        }
+
+        engine::result<std::optional<std::string>> next() override
+        {
+            try
+            {
+                for (;;)
+                {
+                    if (controls.request.load() != engine::control_request::proceed)
+                    {
+                        return std::unexpected(engine::error{"manifest_cancelled", ERROR_CANCELLED});
+                    }
+                    if (offset_ == available_ && !ended_)
+                    {
+                        if (!ReadFile(input_->get(), buffer_.data(), static_cast<DWORD>(buffer_.size()),
+                            &available_, nullptr))
+                        {
+                            return std::unexpected(engine::error{"manifest_read_failed", GetLastError()});
+                        }
+                        offset_ = 0;
+                        ended_ = available_ == 0;
+                    }
+                    if (ended_ && line_.empty())
+                    {
+                        if (records_ == 0)
+                        {
+                            return std::unexpected(engine::error{"manifest_empty"});
+                        }
+                        return std::optional<std::string>{};
+                    }
+                    const bool complete = ended_ || buffer_[offset_] == '\n';
+                    if (complete)
+                    {
+                        if (!ended_)
+                        {
+                            ++offset_;
+                        }
+                        auto entry = agent::parse_manifest_line(line_);
+                        line_.clear();
+                        if (!entry)
+                        {
+                            return std::unexpected(entry.error());
+                        }
+                        if (!agent::within_scope(entry->path, args_.root))
+                        {
+                            return std::unexpected(engine::error{"manifest_target_outside_scope"});
+                        }
+                        if (entry->downgrade)
+                        {
+                            return std::unexpected(engine::error{"quick_downgrade_grant_forbidden"});
+                        }
+                        ++records_;
+                        return std::optional<std::string>{std::move(entry->path)};
+                    }
+                    if (line_.size() == agent::maximum_record_bytes)
+                    {
+                        return std::unexpected(engine::error{"manifest_record_size_invalid"});
+                    }
+                    line_.push_back(buffer_[offset_++]);
+                }
+            }
+            catch (const std::bad_alloc&)
+            {
+                return std::unexpected(engine::error{"manifest_resource_allocation_failed"});
+            }
+        }
+
+    private:
+        const cli::arguments& args_;
+        std::unique_ptr<handle> input_;
+        std::array<char, 64 * 1024> buffer_{};
+        std::string line_;
+        DWORD offset_{};
+        DWORD available_{};
+        std::uint64_t records_{};
+        bool ended_{};
+    };
 
     template<class target_type>
     void reserve_report(report_file& output, const std::vector<target_type>& targets)
@@ -492,22 +582,22 @@ namespace
     }
 
     void record_outcome(report_file& output, summary& result, const engine::target_outcome& outcome,
-        std::string_view path)
+        std::string_view path, bool count = true)
     {
         const bool successful = outcome.deleted &&
             (outcome.code == "deleted_quick_namespace_removed" ||
              outcome.code == "deleted_logical_overwrite_verified_residual_risk" ||
              outcome.code == "deleted_only_residual_risk" ||
              outcome.code == "completed_from_authenticated_checkpoint");
-        if (successful)
+        if (count && successful)
         {
             ++result.completed;
         }
-        else if (outcome.code == "quick_not_attempted" || outcome.code == "not_attempted")
+        else if (count && (outcome.code == "quick_not_attempted" || outcome.code == "not_attempted"))
         {
             ++result.pending;
         }
-        else
+        else if (count)
         {
             ++result.failed;
         }
@@ -560,26 +650,44 @@ namespace
     };
 
     void run_quick(const cli::arguments& args, storage::state_store& store,
-        report_file& output, summary& result, manifest_input input)
+        report_file& output, summary& result, quick::root_source& roots)
     {
         auto host = require(engine::make_windows_quick_backend(store.root_path(), utf16(args.root)));
-        auto targets = require(host->prepare(input.paths, controls));
-        input = {};
-        auto plan = require(quick::freeze_admitted(random_id(), std::move(targets)));
-        const auto& frozen = plan.get();
-        result.job_id = frozen.job_id;
-        result.fingerprint = frozen.fingerprint;
-        result.targets = frozen.targets.size();
-        reserve_report(output, frozen.targets);
+        auto files = require(store.staging_files());
+        const auto resources = require(host->inspect_resources({}));
+        auto memory = std::min(resources.available_memory_bytes, resources.available_commit_bytes) / 16;
+        if (args.memory_budget_bytes != 0)
+        {
+            memory = std::min(memory, args.memory_budget_bytes / 8);
+        }
+        const auto disk = require(files->available_bytes());
+        auto staging = require(quick::store::staging_store::create(files, random_id(),
+            quick::store::options{memory, disk / 2}));
+        require(host->prepare_stream(roots, *staging, controls));
+        auto frozen = require(staging->finalize());
+        staging.reset();
+        const auto& info = frozen.targets->info();
+        result.job_id = info.job_id;
+        result.fingerprint = info.fingerprint;
+        result.targets = info.target_count;
+        constexpr std::uint64_t fixed = 2 * 1024 * 1024;
+        constexpr auto maximum = std::numeric_limits<std::uint64_t>::max();
+        if (frozen.metrics.target_text_bytes > (maximum - fixed) / 6 ||
+            info.target_count > (maximum - fixed - frozen.metrics.target_text_bytes * 6) / 4096)
+        {
+            fail("report_capacity_overflow", 0, 4);
+        }
+        output.reserve(fixed + frozen.metrics.target_text_bytes * 6 + info.target_count * 4096);
         intent(output, args, result);
         if (args.command == "scan")
         {
-            for (const auto& target : frozen.targets)
+            for (std::size_t index = 0; index < info.target_count; ++index)
             {
                 if (controls.request.load() != engine::control_request::proceed)
                 {
                     fail("scan_cancelled", 0, 5);
                 }
+                const auto target = require(frozen.targets->load(index));
                 output.append("{\"schema\":\"windows_agent_cleanup.scan_target.v1\",\"path\":" +
                     agent::json_quote(target.path) + ",\"target_key\":" + agent::json_quote(quick::target_key(target)) +
                     ",\"directory\":" + (target.directory ? "true" : "false") + ",\"error_code\":" +
@@ -598,22 +706,27 @@ namespace
         quick::options settings;
         settings.max_workers = args.workers;
         settings.memory_budget_bytes = args.memory_budget_bytes;
-        auto report = require(quick::run(plan, frozen.fingerprint, args.irreversible, *host,
-            controls, settings), 3);
+        auto report = require(quick::run_staged(*frozen.targets, *frozen.outcomes,
+            info.fingerprint, args.irreversible, *host, controls, settings), 3);
         result.status = report.status;
         result.error_code = report.stopping_error.code;
         result.native_code = report.stopping_error.native_code;
-        if (report.targets.size() != frozen.targets.size())
+        result.completed = report.completed;
+        result.failed = report.failed;
+        result.pending = report.unattempted;
+        for (std::size_t index = 0; index < info.target_count; ++index)
         {
-            fail("quick_outcome_count_invalid", 0, 3);
-        }
-        for (std::size_t index = 0; index < frozen.targets.size(); ++index)
-        {
-            if (report.targets[index].identity != quick::target_key(frozen.targets[index]))
+            const auto outcome = require(frozen.outcomes->read(index), 4);
+            if (outcome.deleted && outcome.code == "deleted_quick_namespace_removed")
+            {
+                continue;
+            }
+            const auto target = require(frozen.targets->load(index), 4);
+            if (outcome.identity != quick::target_key(target))
             {
                 fail("quick_outcome_identity_invalid", 0, 3);
             }
-            record_outcome(output, result, report.targets[index], frozen.targets[index].path);
+            record_outcome(output, result, outcome, target.path, false);
         }
         audit(store, result, "agent_quick_" + result.status);
     }
@@ -746,7 +859,7 @@ namespace
             for (const auto& process : processes)
             {
                 output.append("{\"schema\":\"windows_agent_cleanup.lock.v1\",\"pid\":" +
-                    std::to_string(process.process_id) + ",\"created\":" + std::to_string(process.creation_time) +
+                    std::to_string(process.process_id) + ",\"created\":" + agent::json_quote(std::to_string(process.creation_time)) +
                     ",\"image\":" + agent::json_quote(process.image_path) + ",\"eligible\":" +
                     (process.eligible ? "true" : "false") + ",\"reason\":" + agent::json_quote(process.denial_reason) + "}");
             }
@@ -763,7 +876,7 @@ namespace
             fail("exact_process_tuple_changed");
         }
         output.append("{\"schema\":\"windows_agent_cleanup.process_intent.v1\",\"pid\":" +
-            std::to_string(args.process_id) + ",\"created\":" + std::to_string(args.creation_time) +
+            std::to_string(args.process_id) + ",\"created\":" + agent::json_quote(std::to_string(args.creation_time)) +
             ",\"image\":" + agent::json_quote(args.image) + ",\"target_key\":" + agent::json_quote(args.target_key) +
             ",\"force_authorized\":" + (args.force_terminate ? "true" : "false") + "}");
         output.flush();
@@ -855,13 +968,14 @@ int wmain(int argc, wchar_t** argv)
         }
         else
         {
-            auto input = read_manifest(args, args.command == "resume");
             if (result.mode == "quick")
             {
-                run_quick(args, *store, *output, result, std::move(input));
+                manifest_roots roots(args);
+                run_quick(args, *store, *output, result, roots);
             }
             else
             {
+                auto input = read_manifest(args, args.command == "resume");
                 run_overwrite(args, *store, *output, result, std::move(input));
             }
         }

@@ -237,6 +237,162 @@ public:
     }
 };
 
+// CONTRACT: Test-only resident adapters inject source/outcome faults. Actual disk
+// staging and real namespace effects are covered by the isolated integration suite.
+class staged_fixture final : public quick::target_source, public quick::outcome_sink
+{
+public:
+    explicit staged_fixture(const quick::plan& plan) : targets(plan.targets)
+    {
+        std::sort(targets.begin(), targets.end(), [](const auto& left, const auto& right)
+        {
+            return left.path < right.path;
+        });
+        manifest.job_id = plan.job_id;
+        manifest.fingerprint = plan.fingerprint;
+        manifest.target_count = targets.size();
+        manifest.resident_bytes = 4096;
+        for (std::size_t position = 0; position < targets.size(); ++position)
+        {
+            const auto& value = targets[position];
+            quick::target_index index;
+            index.allocated_bytes = value.allocated_bytes;
+            index.directory = value.directory;
+            index.preparation_failed = !value.preparation_error.code.empty();
+            if (!value.device_key.empty())
+            {
+                auto device = std::find(manifest.device_keys.begin(), manifest.device_keys.end(), value.device_key);
+                if (device == manifest.device_keys.end())
+                {
+                    manifest.device_keys.push_back(value.device_key);
+                    device = std::prev(manifest.device_keys.end());
+                }
+                index.device_index = static_cast<std::uint32_t>(std::distance(manifest.device_keys.begin(), device));
+            }
+            for (std::size_t prior = position; prior != 0; --prior)
+            {
+                if (targets[prior - 1].directory && value.path.starts_with(targets[prior - 1].path + "/"))
+                {
+                    index.parent = prior - 1;
+                    break;
+                }
+            }
+            const auto key = quick::target_key(value);
+            constexpr std::string_view digits = "0123456789abcdef";
+            for (std::size_t offset = 0; offset < index.namespace_digest.size(); ++offset)
+            {
+                index.namespace_digest[offset] = static_cast<std::byte>(
+                    digits.find(key[offset * 2]) * 16 + digits.find(key[offset * 2 + 1]));
+            }
+            indexes.push_back(index);
+            manifest.maximum_target_bytes = std::max(manifest.maximum_target_bytes,
+                static_cast<std::uint64_t>(sizeof(quick::target) + value.path.size() + value.identity.size() +
+                    value.device_key.size() + value.preparation_error.code.size()));
+            manifest.maximum_ancestor_depth = std::max(manifest.maximum_ancestor_depth,
+                static_cast<std::uint64_t>(std::count(value.path.begin(), value.path.end(), '/')));
+        }
+    }
+
+    const quick::staged_plan_info& info() const noexcept override
+    {
+        return manifest;
+    }
+
+    engine::result<void> validate() override
+    {
+        ++validations;
+        if (fail_validation)
+        {
+            return std::unexpected(engine::error{"fixture_source_integrity_failed"});
+        }
+        return {};
+    }
+
+    engine::result<quick::target_index> index(std::size_t position) override
+    {
+        ++index_reads;
+        return indexes.at(position);
+    }
+
+    engine::result<quick::target> load(std::size_t position) override
+    {
+        ++loads;
+        if (fail_load)
+        {
+            return std::unexpected(engine::error{"fixture_source_read_failed"});
+        }
+        return targets.at(position);
+    }
+
+    engine::result<void> begin(const quick::staged_plan_info&, bool reuse_completed) override
+    {
+        ++begins;
+        if (fail_begin)
+        {
+            return std::unexpected(engine::error{"fixture_outcome_reserve_failed"});
+        }
+        if (!reuse_completed)
+        {
+            outcomes.clear();
+            for (const auto& target : targets)
+            {
+                engine::target_outcome value;
+                value.identity = quick::target_key(target);
+                value.code = "quick_not_attempted";
+                outcomes.push_back(std::move(value));
+            }
+        }
+        return {};
+    }
+
+    engine::result<void> record(std::size_t position, const engine::target_outcome& value) override
+    {
+        if (fail_record)
+        {
+            return std::unexpected(engine::error{"fixture_outcome_write_failed"});
+        }
+        outcomes.at(position) = value;
+        return {};
+    }
+
+    engine::result<engine::target_outcome> read(std::size_t position) override
+    {
+        return outcomes.at(position);
+    }
+
+    engine::result<void> finish(const quick::staged_report& report) override
+    {
+        ++finishes;
+        if (throw_finish)
+        {
+            throw std::bad_alloc();
+        }
+        summary = report;
+        if (fail_finish)
+        {
+            return std::unexpected(engine::error{"fixture_outcome_flush_failed"});
+        }
+        return {};
+    }
+
+    quick::staged_plan_info manifest;
+    std::vector<quick::target> targets;
+    std::vector<quick::target_index> indexes;
+    std::vector<engine::target_outcome> outcomes;
+    quick::staged_report summary;
+    std::atomic<std::size_t> loads{};
+    std::size_t validations{};
+    std::size_t index_reads{};
+    std::size_t begins{};
+    std::size_t finishes{};
+    bool fail_validation{};
+    bool fail_load{};
+    bool fail_begin{};
+    bool fail_record{};
+    bool fail_finish{};
+    bool throw_finish{};
+};
+
 [[nodiscard]] engine::result<engine::run_report> execute(const quick::plan& plan,
     test_backend& host, engine::control& control, quick::progress_observer observer = {},
     const engine::run_report* previous = nullptr, quick::options options = {})
@@ -1099,6 +1255,171 @@ int main()
         results.check(report && report->status == "completed" && host.resource_samples >= 2 &&
             host.maximum_first_sample_active == 1 && host.maximum_active > 1 && host.maximum_active <= 4,
             "unknown_then_known_cpu_can_expand_within_pre_admitted_pool_capacity");
+    }
+    {
+        const auto tree = frozen({make_target("/staged/a", true), make_target("/staged/a/child"),
+            make_target("/staged/z")});
+        staged_fixture storage(tree);
+        test_backend host;
+        host.add(tree);
+        engine::control control;
+        const auto report = quick::run_staged(storage, storage, tree.fingerprint, true, host, control, {1, true});
+        results.check(report && report->status == "completed" && report->total == 3 && report->completed == 3 &&
+            report->unattempted == 0 && storage.finishes == 1 && storage.loads == 3,
+            "staged_execution_uses_per_attempt_target_load_and_compact_summary");
+        results.check(host.events == std::vector<std::string>{"remove:/staged/a/child", "remove:/staged/a", "remove:/staged/z"},
+            "staged_compact_parent_index_makes_directory_ready_before_unrelated_file");
+        const auto previous_events = host.events.size();
+        const auto resumed = quick::run_staged(storage, storage, tree.fingerprint, true, host, control, {1, true}, {}, true);
+        results.check(resumed && resumed->completed == 3 && host.events.size() == previous_events && storage.loads == 3,
+            "staged_same_session_retry_skips_bound_completed_outcomes");
+        storage.outcomes.front().identity[0] ^= 1;
+        const auto tampered = quick::run_staged(storage, storage, tree.fingerprint, true, host, control, {1, true}, {}, true);
+        results.check(!tampered && tampered.error().code == "quick_staged_previous_binding_invalid" &&
+            host.events.size() == previous_events, "staged_tampered_prior_outcome_rejected_before_mutation");
+    }
+    {
+        staged_fixture storage(base);
+        test_backend host;
+        host.add(base);
+        host.records.at(first.path).locked = true;
+        host.records.at(first.path).processes = {{42, 43, "fixture", true, {}}};
+        engine::control control;
+        const auto report = quick::run_staged(storage, storage, base.fingerprint, true, host, control, {1, true});
+        results.check(report && report->completed == 2 &&
+            event_index(host, "remove:" + second.path) < event_index(host, "query:" + first.path),
+            "staged_process_recovery_is_deferred_until_complete_first_pass");
+    }
+    for (unsigned fault = 0; fault < 6; ++fault)
+    {
+        staged_fixture storage(base);
+        test_backend host;
+        host.add(base);
+        if (fault == 0)
+        {
+            storage.fail_validation = true;
+        }
+        else if (fault == 1)
+        {
+            storage.fail_begin = true;
+        }
+        else if (fault == 2)
+        {
+            storage.indexes.front().parent = 0;
+        }
+        else if (fault == 3)
+        {
+            storage.manifest.maximum_target_bytes = 1;
+        }
+        else if (fault == 4)
+        {
+            storage.fail_load = true;
+        }
+        else
+        {
+            storage.manifest.maximum_ancestor_depth = 0;
+        }
+        engine::control control;
+        const auto report = quick::run_staged(storage, storage, base.fingerprint, true, host, control, {1, true});
+        results.check(host.events.empty() && (!report || report->completed == 0),
+            "staged_admission_or_source_fault_preserves_all_names_" + std::to_string(fault));
+        if (fault == 0)
+        {
+            results.check(host.begins == 0 && storage.begins == 0,
+                "staged_source_integrity_checked_before_backend_and_outcomes_begin");
+        }
+    }
+    for (const bool finish_fault : {false, true})
+    {
+        staged_fixture storage(base);
+        storage.fail_record = !finish_fault;
+        storage.fail_finish = finish_fault;
+        test_backend host;
+        host.add(base);
+        engine::control control;
+        const auto report = quick::run_staged(storage, storage, base.fingerprint, true, host, control, {1, true});
+        results.check(report && report->status == (finish_fault ? "audit_finalization_failed" : "partial_failure") &&
+            report->stopping_error.code == (finish_fault ? "fixture_outcome_flush_failed" : "fixture_outcome_write_failed") &&
+            report->completed == (finish_fault ? 2U : 1U) && report->unattempted == (finish_fault ? 0U : 1U),
+            finish_fault ? "staged_final_flush_failure_keeps_actual_completion_counts" :
+                "staged_outcome_write_failure_stops_later_work_and_keeps_partial_evidence");
+        results.check(host.finishes == 1, "staged_storage_failure_releases_backend_run_context");
+    }
+    {
+        staged_fixture storage(base);
+        test_backend host;
+        host.add(base);
+        engine::control control;
+        const auto report = quick::run_staged(storage, storage, base.fingerprint, true, host, control, {1, true},
+            [&](const auto& update)
+            {
+                if (update.completed == 1)
+                {
+                    control.request.store(engine::control_request::pause);
+                }
+            });
+        results.check(report && report->status == "paused" && report->unattempted == 1 &&
+            storage.outcomes.back().code == "quick_not_attempted", "staged_pause_preserves_unattempted_provenance");
+        control.request.store(engine::control_request::proceed);
+        const auto resumed = quick::run_staged(storage, storage, base.fingerprint, true, host, control, {1, true}, {}, true);
+        results.check(resumed && resumed->completed == 2 && host.records.at(first.path).attempts == 1,
+            "staged_pause_retry_reuses_completed_names_without_reopening_them");
+    }
+    {
+        auto rejected = first;
+        rejected.preparation_error = {"fixture_protected", 5, false};
+        const auto mixed = frozen({rejected, second});
+        staged_fixture storage(mixed);
+        test_backend host;
+        host.add(mixed);
+        engine::control control;
+        const auto report = quick::run_staged(storage, storage, mixed.fingerprint, true, host, control, {1, true});
+        results.check(report && report->attempted == 2 && report->failed == 1 && report->completed == 1 &&
+            host.records.at(first.path).attempts == 0 && storage.outcomes.front().code == "fixture_protected",
+            "staged_preparation_failure_is_retained_without_namespace_mutation");
+    }
+    {
+        staged_fixture storage(base);
+        test_backend host;
+        host.add(base);
+        engine::control control;
+        const auto report = quick::run_staged(storage, storage, base.fingerprint, true, host, control,
+            {0, true, true, 1024});
+        results.check(!report && host.events.empty() && storage.begins == 0,
+            "staged_compact_metadata_and_worker_budget_admitted_before_outcome_initialization");
+        const auto resources = host.inspect_resources(std::array<std::string_view, 1>{"volume:1"}).value();
+        const auto resident = quick::estimate_admission(base, resources).value();
+        const auto staged = quick::estimate_admission(storage.info(), resources).value();
+        results.check(staged.execution_metadata_bytes < resident.execution_metadata_bytes,
+            "staged_admission_charges_compact_nodes_instead_of_full_per_target_outcomes");
+    }
+    {
+        staged_fixture storage(base);
+        storage.throw_finish = true;
+        test_backend host;
+        host.add(base);
+        engine::control control;
+        const auto report = quick::run_staged(storage, storage, base.fingerprint, true, host, control, {1, true});
+        results.check(report && report->status == "audit_finalization_failed" && report->completed == 2 &&
+            report->stopping_error.code == "quick_outcome_finalization_exception",
+            "staged_final_persistence_exception_retains_post_mutation_counts");
+    }
+    {
+        staged_fixture storage(base);
+        test_backend host;
+        host.add(base);
+        engine::control control;
+        const auto report = quick::run_staged(storage, storage, base.fingerprint, true, host, control, {1, true},
+            [](const auto& update)
+            {
+                if (update.stage == "recovery")
+                {
+                    throw std::bad_alloc();
+                }
+            });
+        results.check(report && report->status == "partial_failure" && report->completed == 2 &&
+            report->stopping_error.code == "quick_progress_observer_failed" && host.finishes == 1,
+            "staged_late_observer_exception_preserves_complete_namespace_evidence");
     }
     std::cout << "{\"summary\":true,\"suite\":\"quick_delete\",\"total\":" << results.total <<
         ",\"passed\":" << results.passed << ",\"failed\":" << results.total - results.passed << "}\n";

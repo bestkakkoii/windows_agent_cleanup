@@ -7,6 +7,7 @@
 
 import std;
 import secure_erase.quick_delete;
+import secure_erase.quick_store;
 import secure_erase.platform;
 
 // CONTRACT: Test-only Linux namespace adapter. No path arguments are accepted.
@@ -16,6 +17,7 @@ namespace
 {
 namespace quick = secure_erase::quick;
 namespace engine = secure_erase::engine;
+namespace store = secure_erase::quick::store;
 
 struct totals
 {
@@ -270,6 +272,151 @@ private:
     std::string root_;
 };
 
+class spool_file final : public store::random_access_file
+{
+public:
+    explicit spool_file(int file) : held_(file)
+    {
+    }
+
+    engine::result<void> read_at(std::uint64_t offset, std::span<std::byte> output) override
+    {
+        while (!output.empty())
+        {
+            const auto count = pread(held_.get(), output.data(), output.size(), static_cast<off_t>(offset));
+            if (count < 0 && errno == EINTR)
+            {
+                continue;
+            }
+            if (count <= 0)
+            {
+                return std::unexpected(engine::error{"fixture_spool_read_failed"});
+            }
+            output = output.subspan(static_cast<std::size_t>(count));
+            offset += static_cast<std::uint64_t>(count);
+        }
+        return {};
+    }
+
+    engine::result<void> write_at(std::uint64_t offset, std::span<const std::byte> input) override
+    {
+        while (!input.empty())
+        {
+            const auto count = pwrite(held_.get(), input.data(), input.size(), static_cast<off_t>(offset));
+            if (count < 0 && errno == EINTR)
+            {
+                continue;
+            }
+            if (count <= 0)
+            {
+                return std::unexpected(engine::error{"fixture_spool_write_failed"});
+            }
+            input = input.subspan(static_cast<std::size_t>(count));
+            offset += static_cast<std::uint64_t>(count);
+        }
+        return {};
+    }
+
+    engine::result<void> resize(std::uint64_t bytes) override
+    {
+        if (bytes > static_cast<std::uint64_t>(std::numeric_limits<off_t>::max()) ||
+            (bytes != 0 && posix_fallocate(held_.get(), 0, static_cast<off_t>(bytes)) != 0) ||
+            ftruncate(held_.get(), static_cast<off_t>(bytes)) != 0)
+        {
+            return std::unexpected(engine::error{"fixture_spool_reserve_failed"});
+        }
+        return {};
+    }
+
+    engine::result<void> flush() override
+    {
+        if (fsync(held_.get()) != 0)
+        {
+            return std::unexpected(engine::error{"fixture_spool_flush_failed"});
+        }
+        return {};
+    }
+
+    engine::result<std::uint64_t> size() const override
+    {
+        struct stat attributes{};
+        if (fstat(held_.get(), &attributes) != 0 || attributes.st_size < 0)
+        {
+            return std::unexpected(engine::error{"fixture_spool_size_failed"});
+        }
+        return static_cast<std::uint64_t>(attributes.st_size);
+    }
+
+private:
+    descriptor held_;
+};
+
+class spool_factory final : public store::file_factory
+{
+public:
+    explicit spool_factory(const std::string& root) : root_(root + "/spool")
+    {
+        if (mkdir(root_.c_str(), 0700) != 0)
+        {
+            throw std::runtime_error("fixture_spool_directory_failed");
+        }
+    }
+
+    engine::result<std::shared_ptr<store::random_access_file>> create_private(std::string_view name) override
+    {
+        if (name.empty() || name.find_first_of("/\\") != std::string_view::npos || name.find("..") != std::string_view::npos)
+        {
+            return std::unexpected(engine::error{"fixture_spool_name_invalid"});
+        }
+        const auto file = open((root_ + "/" + std::string(name)).c_str(),
+            O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW, 0600);
+        if (file < 0)
+        {
+            return std::unexpected(engine::error{"fixture_spool_create_failed"});
+        }
+        return std::static_pointer_cast<store::random_access_file>(std::make_shared<spool_file>(file));
+    }
+
+    engine::result<void> remove_private(std::string_view name) override
+    {
+        if (name.empty() || name.find_first_of("/\\") != std::string_view::npos || name.find("..") != std::string_view::npos ||
+            unlink((root_ + "/" + std::string(name)).c_str()) != 0)
+        {
+            return std::unexpected(engine::error{"fixture_spool_remove_failed"});
+        }
+        return {};
+    }
+
+    engine::result<std::uint64_t> available_bytes() override
+    {
+        std::error_code error;
+        const auto available = std::filesystem::space(root_, error);
+        if (error)
+        {
+            return std::unexpected(engine::error{"fixture_spool_space_failed"});
+        }
+        return available.available;
+    }
+
+private:
+    std::string root_;
+};
+
+[[nodiscard]] std::unique_ptr<store::staging_store> staging(fixture& tree)
+{
+    return store::staging_store::create(std::make_shared<spool_factory>(tree.root()),
+        "1123456789abcdef0123456789abcdef", {65536, 32ULL * 1024 * 1024}).value();
+}
+
+void append_prepared(store::staging_store& store, posix_backend& host, const std::string& path)
+{
+    engine::control control;
+    // One prepared record at a time: no resident complete target vector precedes
+    // staging. This fixture tests the store/core contract, not native enumeration.
+    auto prepared = host.prepare({path}, control).value();
+    store.append(std::move(prepared.front())).value();
+}
+
 [[nodiscard]] quick::plan prepare(posix_backend& host, const std::vector<std::string>& paths)
 {
     engine::control control;
@@ -420,6 +567,84 @@ int main()
         const auto report = quick::run(plan, plan.fingerprint, true, host, control, {0, true, true, 1024});
         results.check(!report && exists(first) && exists(second) && host.removals.empty(),
             "actual_complete_batch_resource_refusal_preserves_every_name");
+    }
+    {
+        fixture tree;
+        posix_backend host(tree.root());
+        auto stage = staging(tree);
+        constexpr std::size_t count = 160;
+        for (std::size_t index = count; index != 0; --index)
+        {
+            const auto path = tree.file("staged/tree/child_" + std::to_string(index));
+            append_prepared(*stage, host, path);
+        }
+        append_prepared(*stage, host, tree.root() + "/staged/tree");
+        append_prepared(*stage, host, tree.root() + "/staged");
+        const auto retained = tree.file("unselected");
+        auto batch = stage->finalize().value();
+        stage.reset();
+        results.check(batch.metrics.run_count > 1 && batch.metrics.merge_passes > 0 &&
+            batch.targets->info().target_count == count + 2 && batch.targets->validate().has_value(),
+            "actual_file_backed_streamed_batch_external_merge_sealed_before_deletion");
+        engine::control control;
+        const auto report = quick::run_staged(*batch.targets, *batch.outcomes,
+            batch.targets->info().fingerprint, true, host, control, {1, true});
+        results.check(report && report->status == "completed" && report->completed == count + 2 &&
+            !exists(tree.root() + "/staged") && contents(retained) == "original_payload_must_not_be_overwritten",
+            "actual_disk_staged_execution_removes_full_selected_subtree_only");
+        bool bound = true;
+        for (std::size_t index = 0; index < batch.targets->info().target_count; ++index)
+        {
+            const auto outcome = batch.outcomes->read(index);
+            const auto target = batch.targets->load(index);
+            bound = bound && outcome && target && outcome->deleted &&
+                outcome->identity == quick::target_key(*target) && !outcome->logical_overwrite_verified;
+        }
+        results.check(bound, "actual_disk_outcomes_page_complete_namespace_bound_results");
+    }
+    {
+        fixture tree;
+        posix_backend host(tree.root());
+        auto stage = staging(tree);
+        const auto first = tree.file("a");
+        const auto second = tree.file("b");
+        append_prepared(*stage, host, first);
+        append_prepared(*stage, host, second);
+        auto batch = stage->finalize().value();
+        engine::control control;
+        const auto paused = quick::run_staged(*batch.targets, *batch.outcomes,
+            batch.targets->info().fingerprint, true, host, control, {1, true}, [&](const auto& update)
+            {
+                if (update.completed == 1)
+                {
+                    control.request.store(engine::control_request::pause);
+                }
+            });
+        results.check(paused && paused->status == "paused" && paused->unattempted == 1 &&
+            !exists(first) && exists(second) && batch.outcomes->read(1)->code == "quick_not_attempted",
+            "actual_disk_outcomes_retain_pause_and_unattempted_name");
+        control.request.store(engine::control_request::proceed);
+        const auto resumed = quick::run_staged(*batch.targets, *batch.outcomes,
+            batch.targets->info().fingerprint, true, host, control, {1, true}, {}, true);
+        results.check(resumed && resumed->status == "completed" && !exists(second) && host.removals.size() == 2,
+            "actual_disk_same_session_resume_skips_completed_name");
+    }
+    {
+        fixture tree;
+        posix_backend host(tree.root());
+        auto stage = staging(tree);
+        const auto original = tree.file("original");
+        append_prepared(*stage, host, original);
+        auto batch = stage->finalize().value();
+        const auto parked = tree.root() + "/parked";
+        results.check(rename(original.c_str(), parked.c_str()) == 0 && tree.file("original") == original,
+            "actual_disk_staged_replacement_fixture_created");
+        engine::control control;
+        const auto report = quick::run_staged(*batch.targets, *batch.outcomes,
+            batch.targets->info().fingerprint, true, host, control, {1, true});
+        results.check(report && report->status == "partial_failure" && report->failed == 1 &&
+            exists(original) && exists(parked) && !batch.outcomes->read(0)->deleted,
+            "actual_disk_frozen_identity_rejects_replaced_namespace");
     }
     std::cout << "{\"summary\":true,\"total\":" << results.total <<
         ",\"passed\":" << results.passed << ",\"failed\":" << results.total - results.passed <<

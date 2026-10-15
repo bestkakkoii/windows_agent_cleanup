@@ -319,6 +319,68 @@ namespace
         return removed.has_value();
     }
 
+    const secure_erase::quick::target* target_ending(const std::vector<secure_erase::quick::target>& values,
+        std::string_view suffix)
+    {
+        for (const auto& value : values)
+        {
+            if (value.path.ends_with(suffix))
+            {
+                return &value;
+            }
+        }
+        return nullptr;
+    }
+
+    class streaming_roots final : public secure_erase::quick::root_source
+    {
+    public:
+        explicit streaming_roots(std::vector<std::string> paths, bool fail_at_end = false)
+            : paths_(std::move(paths)), fail_at_end_(fail_at_end)
+        {
+        }
+        result<std::optional<std::string>> next() override
+        {
+            if (next_ == paths_.size())
+            {
+                if (fail_at_end_)
+                {
+                    return std::unexpected(error{"fixture_source_error"});
+                }
+                return std::optional<std::string>{};
+            }
+            return std::optional<std::string>(paths_[next_++]);
+        }
+    private:
+        std::vector<std::string> paths_;
+        std::size_t next_{};
+        bool fail_at_end_{};
+    };
+
+    class streaming_targets final : public secure_erase::quick::target_sink
+    {
+    public:
+        explicit streaming_targets(bool reject = false) : reject_(reject)
+        {
+        }
+        result<void> append(secure_erase::quick::target value) override
+        {
+            if (reject_)
+            {
+                return std::unexpected(error{"fixture_sink_error"});
+            }
+            // Fixture only: keep its small records for exact membership checks.
+            // Production CLI staging is file-backed, not this test collector.
+            targets.push_back(std::move(value));
+            threads.insert(GetCurrentThreadId());
+            return {};
+        }
+        std::vector<secure_erase::quick::target> targets;
+        std::set<DWORD> threads;
+    private:
+        bool reject_{};
+    };
+
     std::optional<secure_erase::quick::target> freeze_one(secure_erase::quick::backend& backend,
         const std::filesystem::path& path)
     {
@@ -562,8 +624,10 @@ int main(int count, char** arguments)
     const auto sibling = tree.root / L"accessible_sibling.bin";
     check(create_file(sibling), "sibling_fixture_created");
     auto mixed = backend.prepare({path_text(tree.root / L"missing.bin"), path_text(sibling)}, controls);
-    check(mixed && mixed->size() == 2 && !(*mixed)[0].preparation_error.code.empty() &&
-        (*mixed)[1].preparation_error.code.empty() && remove_target(backend, (*mixed)[1], false),
+    const auto mixed_missing = mixed ? target_ending(*mixed, "\\missing.bin") : nullptr;
+    const auto mixed_sibling = mixed ? target_ending(*mixed, "\\accessible_sibling.bin") : nullptr;
+    check(mixed && mixed->size() == 2 && mixed_missing && !mixed_missing->preparation_error.code.empty() &&
+        mixed_sibling && mixed_sibling->preparation_error.code.empty() && remove_target(backend, *mixed_sibling, false),
         "preparation_failure_does_not_abort_accessible_sibling");
 
     const auto destination = tree.root / L"reparse_destination";
@@ -613,17 +677,20 @@ int main(int count, char** arguments)
         auto names = backend.prepare({path_text(upper / L"same.bin"), path_text(lower / L"same.bin")}, controls);
         const bool distinct = names && names->size() == 2 && (*names)[0].preparation_error.code.empty() &&
             (*names)[1].preparation_error.code.empty() && (*names)[0].identity != (*names)[1].identity;
-        if (distinct)
+        const auto upper_target = names ? target_ending(*names, "\\A\\same.bin") : nullptr;
+        const auto lower_target = names ? target_ending(*names, "\\a\\same.bin") : nullptr;
+        if (distinct && upper_target)
         {
-            auto locks = backend.query_locks((*names)[0]);
+            auto locks = backend.query_locks(*upper_target);
             locking_process dummy;
-            auto close = backend.close_process((*names)[0], dummy, false);
+            auto close = backend.close_process(*upper_target, dummy, false);
             check(!locks && locks.error().code == "quick_case_sensitive_process_action_denied" &&
                 !close && close.error().code == "quick_case_sensitive_process_action_denied",
                 "case_sensitive_process_actions_are_withheld");
         }
-        check(setup && distinct && remove_target(backend, (*names)[1], false) && same_data(upper / L"same.bin") &&
-            remove_target(backend, (*names)[0], false), "exact_case_ancestors_and_names_remain_distinct");
+        check(setup && distinct && upper_target && lower_target && remove_target(backend, *lower_target, false) &&
+            same_data(upper / L"same.bin") && remove_target(backend, *upper_target, false),
+            "exact_case_ancestors_and_names_remain_distinct");
     }
     else
     {
@@ -633,6 +700,53 @@ int main(int count, char** arguments)
     }
 
 
+
+    const auto stream_root = tree.root / L"streaming_tree";
+    bool stream_setup = CreateDirectoryW(stream_root.c_str(), nullptr) != FALSE;
+    for (unsigned branch = 0; branch < 4; ++branch)
+    {
+        const auto directory = stream_root / (L"branch_" + std::to_wstring(branch));
+        stream_setup = CreateDirectoryW(directory.c_str(), nullptr) && stream_setup;
+        for (unsigned item = 0; item < 16; ++item)
+        {
+            stream_setup = create_file(directory / (L"item_" + std::to_wstring(item) + L".bin")) && stream_setup;
+        }
+    }
+    check(stream_setup, "streaming_parallel_tree_fixture_created");
+    streaming_roots stream_input({path_text(stream_root)});
+    streaming_targets stream_output;
+    auto streamed = backend.prepare_stream(stream_input, stream_output, controls);
+    std::set<std::string> streamed_names;
+    bool stream_clean = streamed.has_value();
+    for (const auto& value : stream_output.targets)
+    {
+        stream_clean = stream_clean && value.preparation_error.code.empty();
+        streamed_names.insert(value.path);
+    }
+    check(stream_clean && streamed_names.size() == 69 && stream_output.targets.size() == 69 &&
+        same_data(stream_root / L"branch_0" / L"item_0.bin"),
+        "streaming_parallel_scan_freezes_every_name_without_mutation");
+    std::printf("{\"event\":\"fixture_stream_preparation_workers\",\"observed_threads\":%zu}\n",
+        stream_output.threads.size());
+    streaming_roots failed_source({path_text(stream_root)}, true);
+    streaming_targets failed_source_output;
+    auto source_failed = backend.prepare_stream(failed_source, failed_source_output, controls);
+    check(!source_failed && source_failed.error().code == "fixture_source_error" &&
+        same_data(stream_root / L"branch_1" / L"item_1.bin"), "streaming_source_failure_prevents_any_mutation");
+    streaming_roots failed_sink_input({path_text(stream_root)});
+    streaming_targets failed_sink(true);
+    auto sink_failed = backend.prepare_stream(failed_sink_input, failed_sink, controls);
+    check(!sink_failed && sink_failed.error().code == "fixture_sink_error" &&
+        same_data(stream_root / L"branch_2" / L"item_2.bin"), "streaming_sink_failure_joins_workers_without_mutation");
+    control cancelled_stream;
+    cancelled_stream.request.store(control_request::cancel);
+    streaming_roots cancelled_input({path_text(stream_root)});
+    streaming_targets cancelled_output;
+    auto stream_cancelled = backend.prepare_stream(cancelled_input, cancelled_output, cancelled_stream);
+    check(!stream_cancelled && stream_cancelled.error().code == "quick_preparation_cancelled" &&
+        cancelled_output.targets.empty() && same_data(stream_root / L"branch_3" / L"item_3.bin"),
+        "streaming_cancelled_scan_emits_no_executable_partial_plan");
+
     const auto lease_directory = tree.root / L"leased_directory";
     const auto lease_moved = tree.root / L"leased_directory_moved";
     const auto lease_first = lease_directory / L"a.bin";
@@ -640,12 +754,14 @@ int main(int count, char** arguments)
     check(CreateDirectoryW(lease_directory.c_str(), nullptr) && create_file(lease_first) && create_file(lease_second),
         "directory_lease_fixtures_created");
     auto leased = backend.prepare({path_text(lease_first), path_text(lease_second)}, controls);
-    check(leased && leased->size() == 2 && remove_target(backend, leased->front(), false),
+    const auto lease_a = leased ? target_ending(*leased, "\\a.bin") : nullptr;
+    const auto lease_b = leased ? target_ending(*leased, "\\b.bin") : nullptr;
+    check(leased && leased->size() == 2 && lease_a && lease_b && remove_target(backend, *lease_a, false),
         "directory_lease_fast_path_established");
     backend.finish_execution();
     check(MoveFileW(lease_directory.c_str(), lease_moved.c_str()) != FALSE && same_data(lease_moved / L"b.bin"),
         "finish_execution_releases_every_cached_ancestor_pin");
-    check(leased && !remove_target(backend, leased->back(), false) && same_data(lease_moved / L"b.bin"),
+    check(lease_b && !remove_target(backend, *lease_b, false) && same_data(lease_moved / L"b.bin"),
         "finished_context_never_redirects_frozen_name");
     backend.finish_execution();
 
@@ -659,8 +775,10 @@ int main(int count, char** arguments)
         CreateDirectoryW(mutation_destination.c_str(), nullptr) && create_file(mutation_first) && create_file(mutation_second);
     auto mutation_targets = mutation_setup ? backend.prepare({path_text(mutation_first), path_text(mutation_second)}, controls) :
         result<std::vector<secure_erase::quick::target>>(std::unexpected(error{"fixture_setup_failed"}));
-    const bool mutation_ready = mutation_targets && mutation_targets->size() == 2 &&
-        remove_target(backend, mutation_targets->front(), false) &&
+    const auto mutation_a = mutation_targets ? target_ending(*mutation_targets, "\\first.bin") : nullptr;
+    const auto mutation_b = mutation_targets ? target_ending(*mutation_targets, "\\second.bin") : nullptr;
+    const bool mutation_ready = mutation_targets && mutation_targets->size() == 2 && mutation_a && mutation_b &&
+        remove_target(backend, *mutation_a, false) &&
         MoveFileW(mutation_second.c_str(), mutation_original.c_str()) &&
         CreateHardLinkW((mutation_destination / L"second.bin").c_str(), mutation_original.c_str(), nullptr);
     check(mutation_ready, "in_place_ancestor_mutation_fixture_prepared");
@@ -668,7 +786,7 @@ int main(int count, char** arguments)
     const DWORD mutation_error = junction_changed ? ERROR_SUCCESS : GetLastError();
     if (junction_changed)
     {
-        check(!remove_target(backend, mutation_targets->back(), false) && same_data(mutation_original) &&
+        check(!remove_target(backend, *mutation_b, false) && same_data(mutation_original) &&
             same_data(mutation_destination / L"second.bin"), "cached_ancestor_reparse_attribute_change_rejected");
     }
     else if (mutation_error == ERROR_SHARING_VIOLATION || mutation_error == ERROR_ACCESS_DENIED)

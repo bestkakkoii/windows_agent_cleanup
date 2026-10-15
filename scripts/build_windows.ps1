@@ -547,19 +547,21 @@ function ensure_locked_tools([string]$bootstrap_cmake, [string]$bootstrap_ninja,
         $ninja_build = Join-Path $cache 'ninja_build'
         $cmake_binary = Join-Path $cmake_build 'bin/cmake.exe'
         $ctest_binary = Join-Path $cmake_build 'bin/ctest.exe'
+        $cmcldeps_binary = Join-Path $cmake_build 'bin/cmcldeps.exe'
         $ninja_binary = Join-Path $ninja_build 'ninja.exe'
         $receipt_path = Join-Path $cache 'toolchain.json'
-        $identity = [PSCustomObject]@{cmake=$cmake_binary;ctest=$ctest_binary;ninja=$ninja_binary;cache=$cache;cmake_commit=$cmake_lock.commit;ninja_commit=$ninja_lock.commit}
+        $identity = [PSCustomObject]@{cmake=$cmake_binary;ctest=$ctest_binary;cmcldeps=$cmcldeps_binary;ninja=$ninja_binary;cache=$cache;cmake_commit=$cmake_lock.commit;ninja_commit=$ninja_lock.commit}
         if (Test-Path -LiteralPath $receipt_path -PathType Leaf)
         {
             try
             {
                 $receipt = Get-Content -LiteralPath $receipt_path -Raw -Encoding UTF8 | ConvertFrom-Json
-                if ($receipt.schema -ceq 'secure_erase.toolchain_cache.v1' -and $receipt.identity -ceq $identity_text -and
+                if ($receipt.schema -ceq 'secure_erase.toolchain_cache.v2' -and $receipt.identity -ceq $identity_text -and
                     $receipt.cmake_archive_sha256 -ceq $cmake_lock.source_archive.sha256 -and
                     $receipt.ninja_archive_sha256 -ceq $ninja_lock.source_archive.sha256 -and
                     (get_file_sha256 $cmake_binary) -ceq $receipt.cmake_sha256 -and
                     (get_file_sha256 $ctest_binary) -ceq $receipt.ctest_sha256 -and
+                    (get_file_sha256 $cmcldeps_binary) -ceq $receipt.cmcldeps_sha256 -and
                     (get_file_sha256 $ninja_binary) -ceq $receipt.ninja_sha256)
                 {
                     write_event 'bootstrap.cache_verified' @{cache=$cache;cmake_commit=$cmake_lock.commit;ninja_commit=$ninja_lock.commit;receipt=$receipt_path}
@@ -663,11 +665,15 @@ function ensure_locked_tools([string]$bootstrap_cmake, [string]$bootstrap_ninja,
             '-DCMAKE_BUILD_TYPE=Release','-DBUILD_TESTING=OFF','-DBUILD_CursesDialog=OFF','-DCMake_ENABLE_DEBUGGER=OFF',
             '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded','-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=',
             '-DCMAKE_EXE_LINKER_FLAGS_RELEASE=/INCREMENTAL:NO /DEBUG:NONE')
-        invoke_logged 'bootstrap_build_cmake' $bootstrap_cmake @('--build',$cmake_build,'--config','Release','--target','cmake','ctest','--parallel',$tool_jobs.ToString())
-        $receipt = [ordered]@{schema='secure_erase.toolchain_cache.v1';identity=$identity_text;generated_utc=[DateTime]::UtcNow.ToString('o');
+        # Native Ninja resource rules execute cmcldeps before rc.exe. Building
+        # only cmake/ctest leaves that command empty and makes RC receive the
+        # dependency-wrapper arguments as its own command line (RC1107).
+        invoke_logged 'bootstrap_build_cmake' $bootstrap_cmake @('--build',$cmake_build,'--config','Release','--target','cmake','ctest','cmcldeps','--parallel',$tool_jobs.ToString())
+        $receipt = [ordered]@{schema='secure_erase.toolchain_cache.v2';identity=$identity_text;generated_utc=[DateTime]::UtcNow.ToString('o');
             cmake_commit=$cmake_lock.commit;ninja_commit=$ninja_lock.commit;compiler_sha256=$compiler_digest;sdk_version=$sdk_version;
             cmake_archive_sha256=$cmake_lock.source_archive.sha256;ninja_archive_sha256=$ninja_lock.source_archive.sha256;
-            cmake_sha256=(get_file_sha256 $cmake_binary);ctest_sha256=(get_file_sha256 $ctest_binary);ninja_sha256=(get_file_sha256 $ninja_binary)}
+            cmake_sha256=(get_file_sha256 $cmake_binary);ctest_sha256=(get_file_sha256 $ctest_binary);
+            cmcldeps_sha256=(get_file_sha256 $cmcldeps_binary);ninja_sha256=(get_file_sha256 $ninja_binary)}
         [IO.File]::WriteAllText($receipt_path, ($receipt | ConvertTo-Json -Depth 5), $utf8)
         write_event 'bootstrap.completed' @{cache=$cache;cmake_commit=$cmake_lock.commit;ninja_commit=$ninja_lock.commit;receipt=$receipt_path}
         return $identity

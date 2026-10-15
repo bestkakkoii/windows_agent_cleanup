@@ -3,6 +3,7 @@
 import std;
 export import secure_erase.platform;
 export import secure_erase.configuration;
+import secure_erase.quick_store;
 
 export namespace secure_erase::storage
 {
@@ -55,14 +56,18 @@ export namespace secure_erase::storage
 
         [[nodiscard]] const std::wstring& root_path() const noexcept;
 
+        // Ephemeral staging files retain the store lock, private ACL and pinned
+        // ancestry; closing the last handle removes the scratch allocation.
+        [[nodiscard]] engine::result<std::shared_ptr<quick::store::file_factory>> staging_files();
+
     private:
         [[nodiscard]] static engine::result<std::unique_ptr<state_store>> open_impl(
             std::wstring_view private_directory, store_options settings);
 
         struct implementation;
 
-        explicit state_store(std::unique_ptr<implementation> state) noexcept;
+        explicit state_store(std::shared_ptr<implementation> state) noexcept;
 
-        std::unique_ptr<implementation> state_;
+        std::shared_ptr<implementation> state_;
     };
 }

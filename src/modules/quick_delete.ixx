@@ -248,6 +248,9 @@ export namespace secure_erase::quick
     [[nodiscard]] engine::result<admission_estimate> estimate_admission(
         const plan& value, const resource_sample& resources, const options& settings = {});
 
+    [[nodiscard]] engine::result<admission_estimate> estimate_admission(
+        const staged_plan_info& value, const resource_sample& resources, const options& settings = {});
+
     using progress_observer = std::function<void(const progress&)>;
 
     [[nodiscard]] std::string target_key(const target& value);

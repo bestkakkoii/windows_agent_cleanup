@@ -45,7 +45,7 @@ external_includes = {
     "src/windows/retained_copies.cpp": {"windows.h", "vss.h", "vswriter.h", "vsbackup.h"},
     "tests/windows_backend_tests.cpp": {"windows.h"},
     "tests/quick_delete_windows_tests.cpp": {"windows.h", "aclapi.h", "sddl.h", "winioctl.h", "stddef.h"},
-    "tests/state_store_windows_tests.cpp": {"windows.h", "bcrypt.h"},
+    "tests/state_store_windows_tests.cpp": {"windows.h", "bcrypt.h", "winioctl.h"},
     "tests/quick_delete_integration_tests.cpp": {
         "errno.h", "fcntl.h", "stdio.h", "stdlib.h", "sys/file.h", "sys/stat.h", "unistd.h",
     },

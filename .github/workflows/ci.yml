@@ -41,11 +41,36 @@ jobs:
       - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
         with:
           persist-credentials: false
+      - name: Identify runner image
+        id: image
+        shell: pwsh
+        run: '"version=$env:ImageVersion" >> $env:GITHUB_OUTPUT'
+      - uses: actions/cache/restore@3edfce9056124e459a23f683a21433670d47daca
+        id: tools
+        with:
+          path: |
+            build/tools/
+            build/dependencies/
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ steps.image.outputs.version }}-tools-${{ hashFiles('dependencies.lock.json') }}
       - name: Build pinned tools and Release modules; run isolated fixtures
         shell: powershell
         run: >-
           & ./scripts/build_windows.ps1 -mode validate
           -enable_isolated_destructive_tests
+      - name: Check completed tool bootstrap
+        id: receipt
+        if: always()
+        shell: pwsh
+        run: |
+          $receipts = @(Get-ChildItem build/tools -Filter toolchain.json -Recurse -ErrorAction SilentlyContinue)
+          "ready=$($receipts.Count -gt 0)" >> $env:GITHUB_OUTPUT
+      - uses: actions/cache/save@3edfce9056124e459a23f683a21433670d47daca
+        if: always() && steps.tools.outputs.cache-hit != 'true' && steps.receipt.outputs.ready == 'True'
+        with:
+          path: |
+            build/tools/
+            build/dependencies/
+          key: ${{ steps.tools.outputs.cache-primary-key }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:

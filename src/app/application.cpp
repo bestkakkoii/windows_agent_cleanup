@@ -11,6 +11,7 @@ import secure_erase.crypto;
 import secure_erase.state_store;
 import secure_erase.windows_backend;
 import secure_erase.quick_delete;
+import secure_erase.quick_store;
 
 namespace secure_erase::frontend
 {
@@ -69,6 +70,119 @@ namespace secure_erase::frontend
         }
     }
 
+    namespace
+    {
+        std::string input_namespace(std::string_view path)
+        {
+            if (path.starts_with("\\\\?\\"))
+            {
+                path.remove_prefix(4);
+            }
+            std::string result(path);
+            std::replace(result.begin(), result.end(), '/', '\\');
+            while (result.size() > 3 && result.back() == '\\')
+            {
+                result.pop_back();
+            }
+            return result;
+        }
+
+        class vector_roots final : public quick::root_source
+        {
+        public:
+            explicit vector_roots(const std::vector<std::string>& paths) : paths_(paths)
+            {
+            }
+            engine::result<std::optional<std::string>> next() override
+            {
+                if (next_ == paths_.size())
+                {
+                    return std::optional<std::string>{};
+                }
+                return std::optional<std::string>{paths_[next_++]};
+            }
+        private:
+            const std::vector<std::string>& paths_;
+            std::size_t next_{};
+        };
+
+        struct input_completion_candidate
+        {
+            std::string original_path;
+            std::string canonical_path;
+            bool directory{};
+            bool succeeded{};
+            bool incomplete_descendant{};
+        };
+
+        void mark_incomplete_ancestors(std::string_view canonical,
+            const std::unordered_map<std::string_view, input_completion_candidate*>& directories)
+        {
+            std::string_view ancestor = canonical;
+            for (;;)
+            {
+                const auto selected = directories.find(ancestor);
+                if (selected != directories.end())
+                {
+                    selected->second->incomplete_descendant = true;
+                }
+                const auto separator = ancestor.find_last_of('\\');
+                if (separator == std::string_view::npos || separator < 3)
+                {
+                    break;
+                }
+                ancestor = ancestor.substr(0, separator);
+            }
+        }
+
+        void collect_completed_inputs(std::unordered_map<std::string, input_completion_candidate>& candidates,
+            completed_inputs& proof)
+        {
+            for (auto& [key, candidate] : candidates)
+            {
+                static_cast<void>(key);
+                if (candidate.succeeded && !candidate.incomplete_descendant)
+                {
+                    proof.paths.push_back(std::move(candidate.original_path));
+                }
+            }
+        }
+
+        class input_tracking_sink final : public quick::target_sink
+        {
+        public:
+            input_tracking_sink(quick::target_sink& output, const std::vector<std::string>& paths)
+                : output_(output)
+            {
+                for (const auto& path : paths)
+                {
+                    originals_.emplace(input_namespace(path), path);
+                }
+            }
+            engine::result<void> append(quick::target value) override
+            {
+                const auto original = originals_.find(input_namespace(value.path));
+                if (original != originals_.end())
+                {
+                    const auto key = quick::target_key(value);
+                    std::lock_guard lock(mutex_);
+                    proofs_.emplace(key, input_completion_candidate{original->second,
+                        input_namespace(value.path), value.directory, false, false});
+                }
+                return output_.append(std::move(value));
+            }
+            std::unordered_map<std::string, input_completion_candidate> take_proofs()
+            {
+                return std::move(proofs_);
+            }
+        private:
+            quick::target_sink& output_;
+            std::unordered_map<std::string, std::string> originals_;
+            std::unordered_map<std::string, input_completion_candidate> proofs_;
+            std::mutex mutex_;
+        };
+    }
+
     struct application::implementation final : engine::event_sink
     {
         mutable std::mutex mutex;
@@ -81,8 +195,11 @@ namespace secure_erase::frontend
         std::unique_ptr<storage::state_store> store;
         std::unique_ptr<engine::platform> host;
         std::unique_ptr<quick::backend> quick_host;
-        std::shared_ptr<const quick::plan> quick_plan;
-        std::shared_ptr<const quick::admitted_plan> quick_admitted;
+        std::shared_ptr<quick::target_source> quick_targets;
+        std::shared_ptr<quick::outcome_sink> quick_outcomes;
+        std::unordered_map<std::string, input_completion_candidate> quick_input_proofs;
+        std::jthread page_worker;
+        std::uint64_t page_generation{};
         std::shared_ptr<const engine::run_report> quick_report;
         std::string quick_lock_fingerprint;
         std::string quick_lock_identity;
@@ -99,6 +216,11 @@ namespace secure_erase::frontend
             if (worker.joinable())
             {
                 worker.join();
+            }
+            page_worker.request_stop();
+            if (page_worker.joinable())
+            {
+                page_worker.join();
             }
             erase_secrets(resume);
         }
@@ -153,15 +275,33 @@ namespace secure_erase::frontend
             {
                 std::lock_guard lock(mutex);
                 view.busy = true;
+                ++page_generation;
+                page_worker.request_stop();
+                view.quick_page_loading = false;
                 view.status = std::move(status);
                 view.error_code.clear();
                 view.native_code = 0;
             }
             worker = std::jthread([this, operation = std::move(operation), needs_overwrite_host]()
             {
-                if (initialize(needs_overwrite_host))
+                if (page_worker.joinable())
                 {
-                    operation();
+                    page_worker.join();
+                }
+                try
+                {
+                    if (initialize(needs_overwrite_host))
+                    {
+                        operation();
+                    }
+                }
+                catch (const std::bad_alloc&)
+                {
+                    fail(engine::error{"application_resource_allocation_failed"});
+                }
+                catch (...)
+                {
+                    fail(engine::error{"application_worker_exception"});
                 }
                 std::lock_guard lock(mutex);
                 view.busy = false;
@@ -173,8 +313,15 @@ namespace secure_erase::frontend
         void clear_quick_locked()
         {
             // PRECONDITION: mutex held; the worker is the only backend owner.
-            quick_plan.reset();
-            quick_admitted.reset();
+            quick_targets.reset();
+            quick_outcomes.reset();
+            quick_input_proofs.clear();
+            ++page_generation;
+            page_worker.request_stop();
+            view.quick_paged = false;
+            view.quick_page_loading = false;
+            view.quick_page_data.reset();
+            view.quick_completed_inputs.reset();
             quick_report.reset();
             quick_lock_fingerprint.clear();
             quick_lock_identity.clear();
@@ -207,43 +354,71 @@ namespace secure_erase::frontend
         std::optional<quick::target> failed_quick_target_locked(std::string_view path,
             std::string_view fingerprint) const
         {
-            // SECURITY: No arbitrary path is admitted to process recovery. A final
-            // report, original immutable plan and exact namespace must all agree.
-            if (!view.quick_mode || !quick_plan || !quick_report ||
-                quick_plan->fingerprint != fingerprint || quick_report->plan_fingerprint != fingerprint ||
-                quick_plan->job_id != quick_report->job_id)
+            if (!view.quick_mode || !quick_targets || !quick_report || !view.quick_page_data ||
+                view.quick_pending != 0 || view.quick_attempted != view.quick_total || view.quick_total == 0 ||
+                quick_targets->info().fingerprint != fingerprint || quick_report->plan_fingerprint != fingerprint ||
+                quick_targets->info().job_id != quick_report->job_id ||
+                view.quick_page_data->job_id != quick_report->job_id ||
+                view.quick_page_data->fingerprint != fingerprint)
             {
                 return {};
             }
-            if (std::any_of(quick_report->targets.begin(), quick_report->targets.end(),
-                [](const auto& value)
+            for (const auto& item : view.quick_page_data->items)
+            {
+                if (item.target.path == path && item.target.preparation_error.code.empty() &&
+                    item.outcome && item.outcome->identity == quick::target_key(item.target) &&
+                    !quick_success(*item.outcome) && item.outcome->code != "quick_not_attempted" &&
+                    item.outcome->code != "quick_device_stopped")
                 {
-                    return value.code == "quick_not_attempted";
-                }))
-            {
-                return {};
+                    return item.target;
+                }
             }
-            const auto target = std::find_if(quick_plan->targets.begin(), quick_plan->targets.end(),
-                [path](const auto& value)
+            return {};
+        }
+
+        engine::result<std::shared_ptr<const quick_page>> load_page(
+            const std::shared_ptr<quick::target_source>& targets,
+            const std::shared_ptr<quick::outcome_sink>& outcomes, std::uint64_t offset,
+            bool incomplete, bool has_outcomes, std::uint64_t incomplete_count, std::stop_token stop = {})
+        {
+            const auto& info = targets->info();
+            auto page = std::make_shared<quick_page>();
+            page->job_id = info.job_id;
+            page->fingerprint = info.fingerprint;
+            page->offset = std::min<std::uint64_t>(offset, info.target_count);
+            page->next_offset = page->offset;
+            page->total = incomplete ? incomplete_count : info.target_count;
+            page->failures_only = incomplete;
+            page->items.reserve(128);
+            while (page->next_offset < info.target_count && page->items.size() < 128)
+            {
+                if (stop.stop_requested())
                 {
-                    return value.path == path;
-                });
-            if (target == quick_plan->targets.end() || !target->preparation_error.code.empty())
-            {
-                return {};
-            }
-            const auto key = quick::target_key(*target);
-            const auto outcome = std::find_if(quick_report->targets.begin(), quick_report->targets.end(),
-                [&key](const auto& value)
+                    return std::unexpected(engine::error{"quick_page_cancelled"});
+                }
+                const auto index = static_cast<std::size_t>(page->next_offset++);
+                std::optional<engine::target_outcome> outcome;
+                if (has_outcomes)
                 {
-                    return value.identity == key;
-                });
-            if (outcome == quick_report->targets.end() || quick_success(*outcome) ||
-                outcome->code == "quick_not_attempted" || outcome->code == "quick_device_stopped")
-            {
-                return {};
+                    auto loaded = outcomes->read(index);
+                    if (!loaded)
+                    {
+                        return std::unexpected(loaded.error());
+                    }
+                    outcome = std::move(*loaded);
+                    if (incomplete && quick_success(*outcome))
+                    {
+                        continue;
+                    }
+                }
+                auto target = targets->load(index);
+                if (!target)
+                {
+                    return std::unexpected(target.error());
+                }
+                page->items.push_back(quick_page_item{index, std::move(*target), std::move(outcome)});
             }
-            return *target;
+            return std::shared_ptr<const quick_page>(std::move(page));
         }
 
         void quick_progress(const quick::progress& value)
@@ -271,66 +446,6 @@ namespace secure_erase::frontend
             }
         }
 
-        engine::result<void> quick_audit(const engine::run_report& report)
-        {
-            std::lock_guard event_lock(event_mutex);
-            std::array<engine::event, 64> batch;
-            std::size_t count{};
-            auto flush = [this, &batch, &count]() -> engine::result<void>
-            {
-                if (count == 0)
-                {
-                    return {};
-                }
-                auto written = store->emit_batch(std::span(batch.data(), count));
-                if (!written)
-                {
-                    return written;
-                }
-                for (std::size_t index = 0; index < count; ++index)
-                {
-                    if (on_event && !on_event(batch[index]))
-                    {
-                        return std::unexpected(engine::error{"observer_output_failed"});
-                    }
-                }
-                std::lock_guard lock(mutex);
-                for (std::size_t index = 0; index < count; ++index)
-                {
-                    if (view.recent_events.size() == 128)
-                    {
-                        view.recent_events.erase(view.recent_events.begin());
-                    }
-                    view.recent_events.push_back(batch[index]);
-                }
-                count = 0;
-                return {};
-            };
-            if (!report.stopping_error.code.empty())
-            {
-                batch[count++] = engine::event{report.stopping_error.code, report.job_id, {},
-                    0, 0, report.stopping_error.native_code};
-            }
-            for (const auto& outcome : report.targets)
-            {
-                if (quick_success(outcome))
-                {
-                    continue;
-                }
-                batch[count++] = engine::event{outcome.code, report.job_id, outcome.identity,
-                    0, 0, outcome.native_code};
-                if (count == batch.size())
-                {
-                    auto logged = flush();
-                    if (!logged)
-                    {
-                        return logged;
-                    }
-                }
-            }
-            return flush();
-        }
-
         void sample_quick_space(quick::space_observation& observation, bool before)
         {
             auto sampled = quick_host->sample_space(observation.volume_key);
@@ -350,20 +465,19 @@ namespace secure_erase::frontend
             }
         }
 
-        std::pair<std::vector<quick::space_observation>, bool> begin_quick_space(const quick::plan& plan)
+        std::pair<std::vector<quick::space_observation>, bool> begin_quick_space(const quick::staged_plan_info& plan)
         {
             // PERFORMANCE: Bound telemetry independently of target count. Only
             // eligible frozen volume keys are sampled; no namespace is enumerated.
             constexpr std::size_t maximum_volumes = 128;
             std::vector<quick::space_observation> observations;
-            observations.reserve((std::min)(maximum_volumes, plan.targets.size()));
+            observations.reserve((std::min)(maximum_volumes, plan.device_keys.size()));
             std::unordered_set<std::string_view> selected;
             selected.reserve(maximum_volumes);
             bool truncated{};
-            for (const auto& target : plan.targets)
+            for (const auto& device_key : plan.device_keys)
             {
-                if (!target.preparation_error.code.empty() || target.device_key.empty() ||
-                    selected.contains(target.device_key))
+                if (device_key.empty() || selected.contains(device_key))
                 {
                     continue;
                 }
@@ -372,56 +486,94 @@ namespace secure_erase::frontend
                     truncated = true;
                     break;
                 }
-                selected.insert(target.device_key);
+                selected.insert(device_key);
                 quick::space_observation observation;
-                observation.volume_key = target.device_key;
+                observation.volume_key = device_key;
                 sample_quick_space(observation, true);
                 observations.push_back(std::move(observation));
             }
             return {std::move(observations), truncated};
         }
 
+        engine::result<void> audit_batch(std::span<const engine::event> events)
+        {
+            std::lock_guard serialized(event_mutex);
+            auto written = store->emit_batch(events);
+            if (!written)
+            {
+                return written;
+            }
+            for (const auto& event : events)
+            {
+                if (on_event && !on_event(event))
+                {
+                    return std::unexpected(engine::error{"observer_output_failed"});
+                }
+            }
+            std::lock_guard lock(mutex);
+            for (const auto& event : events)
+            {
+                if (view.recent_events.size() == 128)
+                {
+                    view.recent_events.erase(view.recent_events.begin());
+                }
+                view.recent_events.push_back(event);
+            }
+            return {};
+        }
+
         bool launch_quick(std::string fingerprint, bool irreversible_confirmed, bool retry)
         {
-            std::shared_ptr<const quick::plan> plan;
-            std::shared_ptr<const quick::admitted_plan> admitted;
-            std::shared_ptr<const engine::run_report> previous;
+            std::shared_ptr<quick::target_source> targets;
+            std::shared_ptr<quick::outcome_sink> outcomes;
+            std::unordered_map<std::string, input_completion_candidate> input_proofs;
             {
                 std::lock_guard lock(mutex);
-                if (view.busy || !view.quick_mode || !quick_plan || !quick_admitted || !view.plan ||
-                    !irreversible_confirmed || fingerprint != quick_plan->fingerprint ||
-                    view.plan->job_id != quick_plan->job_id || view.plan->fingerprint != fingerprint)
+                if (view.busy || !view.quick_mode || !quick_targets || !quick_outcomes || !view.plan ||
+                    !irreversible_confirmed || fingerprint != quick_targets->info().fingerprint ||
+                    view.plan->job_id != quick_targets->info().job_id ||
+                    (retry ? !quick_report : static_cast<bool>(quick_report)))
                 {
                     return false;
                 }
-                if (retry)
-                {
-                    if (!quick_report || quick_report->job_id != quick_plan->job_id ||
-                        quick_report->plan_fingerprint != fingerprint)
-                    {
-                        return false;
-                    }
-                    previous = quick_report;
-                }
-                else if (quick_report)
-                {
-                    return false;
-                }
-                plan = quick_plan;
-                admitted = quick_admitted;
-                view.quick_space.clear();
-                view.quick_space_truncated = false;
+                targets = quick_targets;
+                outcomes = quick_outcomes;
+                input_proofs = quick_input_proofs;
+                ++page_generation;
+                page_worker.request_stop();
+                view.quick_page_loading = false;
             }
             controls.request.store(engine::control_request::proceed);
             return launch(retry ? "quick_retrying" : "quick_executing",
-                [this, plan, admitted, previous, fingerprint = std::move(fingerprint), irreversible_confirmed]()
+                [this, targets, outcomes, input_proofs = std::move(input_proofs),
+                 fingerprint = std::move(fingerprint), irreversible_confirmed, retry]() mutable
             {
                 if (!initialize_quick())
                 {
                     return;
                 }
-                auto intent = emit(engine::event{previous ? "quick_delete_retry_started" : "quick_delete_started",
-                    plan->job_id, plan->fingerprint, 0, 0, 0, plan->targets.size(), 0, 0});
+                const auto& info = targets->info();
+                // Preallocate compact publication and selected-root proof storage
+                // before mutation. Expanded target/outcome collections stay on disk.
+                auto report = std::make_shared<engine::run_report>();
+                report->job_id = info.job_id;
+                report->plan_fingerprint = info.fingerprint;
+                auto proof = std::make_shared<completed_inputs>();
+                proof->job_id = info.job_id;
+                proof->fingerprint = info.fingerprint;
+                proof->paths.reserve(input_proofs.size());
+                std::unordered_map<std::string_view, input_completion_candidate*> selected_directories;
+                selected_directories.reserve(input_proofs.size());
+                for (auto& [key, candidate] : input_proofs)
+                {
+                    static_cast<void>(key);
+                    if (candidate.directory)
+                    {
+                        selected_directories.emplace(candidate.canonical_path, &candidate);
+                    }
+                }
+                auto intent = emit(engine::event{retry ? "quick_delete_retry_started" : "quick_delete_started",
+                    info.job_id, info.fingerprint, 0, 0, 0, info.target_count, 0, 0});
                 if (!intent)
                 {
                     fail(intent.error());
@@ -431,12 +583,12 @@ namespace secure_erase::frontend
                     std::lock_guard lock(mutex);
                     view.executing = true;
                     view.report.reset();
+                    view.quick_completed_inputs.reset();
+                    view.quick_page_data.reset();
                     view.devices.clear();
-                    view.quick_space.clear();
-                    view.quick_space_truncated = false;
-                    view.quick_total = plan->targets.size();
+                    view.quick_total = info.target_count;
                     view.quick_attempted = 0;
-                    view.quick_pending = plan->targets.size();
+                    view.quick_pending = info.target_count;
                     view.completed_count = 0;
                     view.failed_count = 0;
                     view.quick_stage = "first_pass";
@@ -446,107 +598,142 @@ namespace secure_erase::frontend
                     quick_lock_identity.clear();
                     quick_last_progress = {};
                 }
-                const quick::options options = quick_settings;
-                auto [space, space_truncated] = begin_quick_space(*plan);
-                auto result = quick::run(*admitted, fingerprint, irreversible_confirmed, *quick_host,
-                    controls, options, [this](const quick::progress& value)
-                    {
-                        quick_progress(value);
-                    }, previous.get());
-                // CONTRACT: Sampling occurs outside per-target privileged scopes;
-                // observations cannot prove immediate allocation release or causality.
+                auto [space, truncated] = begin_quick_space(info);
+                auto result = quick::run_staged(*targets, *outcomes, fingerprint,
+                    irreversible_confirmed, *quick_host, controls, quick_settings,
+                    [this](const quick::progress& value) { quick_progress(value); }, retry);
                 for (auto& observation : space)
                 {
                     sample_quick_space(observation, false);
                 }
                 if (!result)
                 {
-                    // CONTRACT: run rejects invalid inputs before mutation. Its
-                    // per-target operational failures are always returned in a report.
                     fail(result.error());
-                    static_cast<void>(emit(engine::event{"quick_delete_rejected", plan->job_id,
-                        result.error().code, 0, 0, result.error().native_code}));
+                    report->status = "partial_failure";
+                    report->stopping_error = result.error();
                     std::lock_guard lock(mutex);
-                    view.report = previous;
+                    quick_report = report;
+                    view.report = report;
+                    view.quick_completed_inputs = proof;
                     view.quick_space = std::move(space);
-                    view.quick_space_truncated = space_truncated;
-                    view.quick_stage = "rejected";
-                    if (previous)
-                    {
-                        view.completed_count = 0;
-                        view.failed_count = 0;
-                        view.quick_pending = 0;
-                        for (const auto& outcome : previous->targets)
-                        {
-                            if (quick_success(outcome))
-                            {
-                                ++view.completed_count;
-                            }
-                            else if (outcome.code == "quick_not_attempted")
-                            {
-                                ++view.quick_pending;
-                            }
-                            else
-                            {
-                                ++view.failed_count;
-                            }
-                        }
-                        view.quick_attempted = previous->targets.size() - view.quick_pending;
-                    }
+                    view.quick_space_truncated = truncated;
                     return;
                 }
-                auto report = std::make_shared<engine::run_report>(std::move(*result));
-                std::size_t completed{};
-                std::size_t pending{};
-                for (const auto& outcome : report->targets)
+                report->status = result->status;
+                report->stopping_error = result->stopping_error;
+                engine::error diagnostics;
+                std::shared_ptr<const quick_page> page;
+                try
                 {
-                    if (quick_success(outcome))
+                    std::array<engine::event, 64> audit_events;
+                    std::size_t audit_count{};
+                    if (!result->stopping_error.code.empty())
                     {
-                        ++completed;
+                        audit_events[audit_count++] = engine::event{result->stopping_error.code,
+                            info.job_id, {}, 0, 0, result->stopping_error.native_code};
                     }
-                    else if (outcome.code == "quick_not_attempted")
+                    for (std::size_t index = 0; index < info.target_count; ++index)
                     {
-                        ++pending;
+                        auto outcome = outcomes->read(index);
+                        if (!outcome)
+                        {
+                            diagnostics = outcome.error();
+                            break;
+                        }
+                        if (quick_success(*outcome))
+                        {
+                            const auto original = input_proofs.find(outcome->identity);
+                            if (original != input_proofs.end())
+                            {
+                                original->second.succeeded = true;
+                            }
+                        }
+                        else
+                        {
+                            if (!selected_directories.empty())
+                            {
+                                auto target = targets->load(index);
+                                if (!target)
+                                {
+                                    diagnostics = target.error();
+                                    break;
+                                }
+                                const auto canonical = input_namespace(target->path);
+                                mark_incomplete_ancestors(canonical, selected_directories);
+                            }
+                            audit_events[audit_count++] = engine::event{outcome->code, info.job_id,
+                                outcome->identity, 0, 0, outcome->native_code};
+                            if (audit_count == audit_events.size())
+                            {
+                                auto logged = audit_batch(std::span(audit_events.data(), audit_count));
+                                audit_count = 0;
+                                if (!logged)
+                                {
+                                    diagnostics = logged.error();
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if (audit_count != 0 && diagnostics.code.empty())
+                    {
+                        auto logged = audit_batch(std::span(audit_events.data(), audit_count));
+                        if (!logged)
+                        {
+                            diagnostics = logged.error();
+                        }
+                    }
+                    if (diagnostics.code.empty())
+                    {
+                        collect_completed_inputs(input_proofs, *proof);
+                    }
+                    auto loaded = load_page(targets, outcomes, 0, true, true,
+                        result->failed + result->unattempted);
+                    if (loaded)
+                    {
+                        page = std::move(*loaded);
+                    }
+                    else if (diagnostics.code.empty())
+                    {
+                        diagnostics = loaded.error();
                     }
                 }
-                const auto failed = report->targets.size() - completed - pending;
-                auto logged = quick_audit(*report);
-                if (logged)
+                catch (...)
                 {
-                    logged = emit(engine::event{"quick_delete_finished_" + report->status,
-                        plan->job_id, plan->fingerprint, 0, 0, 0, report->targets.size(), completed, failed});
+                    diagnostics = engine::error{"quick_result_diagnostics_failed"};
                 }
-                if (!logged)
+                if (!diagnostics.code.empty())
                 {
-                    // INVARIANT: Success is not published before audit finalization.
-                    // Verified namespace outcomes remain true after a logging failure.
+                    proof->paths.clear();
+                    report->status = "audit_finalization_failed";
+                }
+                auto finished = emit(engine::event{"quick_delete_finished_" + report->status,
+                    info.job_id, info.fingerprint, 0, 0, result->stopping_error.native_code,
+                    result->total, result->completed, result->failed});
+                if (!finished)
+                {
+                    diagnostics = finished.error();
+                    proof->paths.clear();
                     report->status = "audit_finalization_failed";
                 }
                 {
                     std::lock_guard lock(mutex);
                     quick_report = report;
                     view.report = report;
+                    view.quick_completed_inputs = std::move(proof);
+                    view.quick_page_data = std::move(page);
                     view.quick_space = std::move(space);
-                    view.quick_space_truncated = space_truncated;
+                    view.quick_space_truncated = truncated;
                     view.status = report->status;
                     view.quick_stage = report->status;
-                    view.completed_count = completed;
-                    view.failed_count = failed;
-                    view.quick_pending = pending;
-                    view.quick_attempted = report->targets.size() - pending;
-                    view.error_code = report->stopping_error.code;
-                    view.native_code = report->stopping_error.native_code;
-                    if (!logged)
-                    {
-                        view.error_code = logged.error().code;
-                        view.native_code = logged.error().native_code;
-                    }
+                    view.quick_total = result->total;
+                    view.quick_attempted = result->attempted;
+                    view.completed_count = result->completed;
+                    view.failed_count = result->failed;
+                    view.quick_pending = result->unattempted;
+                    view.error_code = diagnostics.code.empty() ? report->stopping_error.code : diagnostics.code;
+                    view.native_code = diagnostics.code.empty() ? report->stopping_error.native_code : diagnostics.native_code;
                 }
-                if (!logged)
-                {
-                    return;
-                }
-                collect_history();
             }, false);
         }
 
@@ -718,10 +905,10 @@ namespace secure_erase::frontend
             }
             state_->clear_quick_locked();
             state_->view.quick_mode = true;
+            state_->view.quick_paged = true;
             state_->view.plan.reset();
             state_->view.report.reset();
             state_->view.resume_loaded = false;
-            state_->view.devices.clear();
             state_->view.completed_count = 0;
             state_->view.failed_count = 0;
         }
@@ -733,36 +920,122 @@ namespace secure_erase::frontend
             {
                 return;
             }
-            auto targets = state_->quick_host->prepare(paths, state_->controls);
-            if (!targets)
-            {
-                state_->fail(targets.error());
-                return;
-            }
             auto job_id = random_job_id();
-            if (!job_id)
+            auto files = state_->store->staging_files();
+            auto resources = state_->quick_host->inspect_resources({});
+            if (!job_id || !files || !resources)
             {
-                state_->fail(job_id.error());
+                state_->fail(!job_id ? job_id.error() : !files ? files.error() : resources.error());
                 return;
             }
-            auto frozen = quick::freeze_admitted(std::move(*job_id), std::move(*targets));
+            auto memory = std::min(resources->available_memory_bytes, resources->available_commit_bytes) / 16;
+            if (state_->quick_settings.memory_budget_bytes != 0)
+            {
+                memory = std::min(memory, state_->quick_settings.memory_budget_bytes / 8);
+            }
+            auto disk = (*files)->available_bytes();
+            if (!disk)
+            {
+                state_->fail(disk.error());
+                return;
+            }
+            auto staging = quick::store::staging_store::create(*files, *job_id,
+                quick::store::options{memory, *disk / 2});
+            if (!staging)
+            {
+                state_->fail(staging.error());
+                return;
+            }
+            vector_roots roots(paths);
+            input_tracking_sink tracking(**staging, paths);
+            auto prepared = state_->quick_host->prepare_stream(roots, tracking, state_->controls);
+            if (!prepared)
+            {
+                state_->fail(prepared.error());
+                return;
+            }
+            auto frozen = (*staging)->finalize();
             if (!frozen)
             {
                 state_->fail(frozen.error());
                 return;
             }
-            auto admitted = std::make_shared<const quick::admitted_plan>(std::move(*frozen));
-            auto plan = std::shared_ptr<const quick::plan>(admitted, &admitted->get());
-            auto display = std::make_shared<const engine::frozen_plan>(quick::display_plan(*plan));
+            auto page = state_->load_page(frozen->targets, frozen->outcomes, 0, false, false, 0);
+            if (!page)
+            {
+                state_->fail(page.error());
+                return;
+            }
+            auto display = std::make_shared<engine::frozen_plan>();
+            display->job_id = frozen->targets->info().job_id;
+            display->fingerprint = frozen->targets->info().fingerprint;
             std::lock_guard lock(state_->mutex);
-            state_->quick_plan = std::move(plan);
-            state_->quick_admitted = std::move(admitted);
+            state_->quick_targets = std::move(frozen->targets);
+            state_->quick_outcomes = std::move(frozen->outcomes);
+            state_->quick_input_proofs = tracking.take_proofs();
             state_->view.plan = std::move(display);
-            state_->view.quick_total = state_->quick_plan->targets.size();
-            state_->view.quick_pending = state_->quick_plan->targets.size();
+            state_->view.quick_page_data = std::move(*page);
+            state_->view.quick_total = state_->quick_targets->info().target_count;
+            state_->view.quick_pending = state_->view.quick_total;
             state_->view.status = "quick_preview_ready";
             state_->view.quick_stage = "prepared";
         }, false);
+    }
+
+    bool application::request_quick_page(std::uint64_t offset, bool failures_only)
+    {
+        std::shared_ptr<quick::target_source> targets;
+        std::shared_ptr<quick::outcome_sink> outcomes;
+        bool has_outcomes{};
+        std::uint64_t incomplete{};
+        std::uint64_t generation{};
+        {
+            std::lock_guard lock(state_->mutex);
+            if (state_->view.busy || state_->view.quick_page_loading || !state_->quick_targets ||
+                (failures_only && !state_->quick_report))
+            {
+                return false;
+            }
+            targets = state_->quick_targets;
+            outcomes = state_->quick_outcomes;
+            has_outcomes = static_cast<bool>(state_->quick_report);
+            incomplete = state_->view.failed_count + state_->view.quick_pending;
+            generation = ++state_->page_generation;
+            state_->view.quick_page_loading = true;
+        }
+        if (state_->page_worker.joinable())
+        {
+            state_->page_worker.join();
+        }
+        state_->page_worker = std::jthread([this, targets, outcomes, offset, failures_only,
+            has_outcomes, incomplete, generation](std::stop_token stop)
+        {
+            engine::result<std::shared_ptr<const quick_page>> page = std::unexpected(
+                engine::error{"quick_page_allocation_failed"});
+            try
+            {
+                page = state_->load_page(targets, outcomes, offset, failures_only, has_outcomes, incomplete, stop);
+            }
+            catch (...)
+            {
+            }
+            std::lock_guard lock(state_->mutex);
+            if (state_->page_generation != generation || state_->quick_targets != targets)
+            {
+                return;
+            }
+            state_->view.quick_page_loading = false;
+            if (page)
+            {
+                state_->view.quick_page_data = std::move(*page);
+            }
+            else
+            {
+                state_->view.error_code = page.error().code;
+                state_->view.native_code = page.error().native_code;
+            }
+        });
+        return true;
     }
 
     bool application::execute_quick(std::string fingerprint, bool irreversible_confirmed)
@@ -843,7 +1116,7 @@ namespace secure_erase::frontend
             {
                 return false;
             }
-            job_id = state_->quick_plan->job_id;
+            job_id = state_->quick_targets->info().job_id;
             // SECURITY: Consume this selection before asynchronous launch. A new
             // action needs a fresh enumeration and, for force, individual consent.
             state_->view.locks.clear();
@@ -1147,6 +1420,10 @@ namespace secure_erase::frontend
         result.executing = view.executing;
         result.resume_loaded = view.resume_loaded;
         result.quick_mode = view.quick_mode;
+        result.quick_paged = view.quick_paged;
+        result.quick_page_loading = view.quick_page_loading;
+        result.quick_page_data = view.quick_page_data;
+        result.quick_completed_inputs = view.quick_completed_inputs;
         result.quick_stage = view.quick_stage;
         result.quick_total = view.quick_total;
         result.quick_attempted = view.quick_attempted;

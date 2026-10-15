@@ -1,0 +1,49 @@
+{
+  "schema": "windows_agent_cleanup.quick_cleanup.v2",
+  "version": "2.0.0-rc.1",
+  "authority": "Owner-approved redesign, implementation authorized 2026-10-15",
+  "platform": "Windows11+ x64; minimum build22000",
+  "interfaces": {
+    "cli": "Native machine-only scoped JSONL batch requests; one compact JSON summary; no MCP",
+    "gui": "Minimal ImGui/Win32/DX11 controls using the same protected adaptive core",
+    "agent_entry": "README_AI.md; optional thin Codex/Claude Skills"
+  },
+  "cleanup_plans": [
+    "default autonomous cleanup with positive disposability evidence",
+    "custom explicit directory or file list",
+    "scan only"
+  ],
+  "authorization": {
+    "ask_plan_and_scope_before_cleanup": true,
+    "per_file_human_prompts": false,
+    "irreversible_run_authorization": "explicit request flag after plan/scope selection",
+    "force_process": "independent fresh target-key/PID/creation-time/image authorization",
+    "development_implies_cleanup": false
+  },
+  "execution": {
+    "membership": "Complete batch frozen before mutation; additions/replacements excluded",
+    "staging": "Bounded sorted runs and indexed protected scratch files; compact resource-admitted scheduler metadata",
+    "admission": "Live RAM/commit/job/handle/disk/CPU budgets; no fixed target count; reject whole batch before mutation if insufficient",
+    "preparation": "Bounded independent work with pinned ancestry, per-worker buffers and shared volume facts",
+    "scheduling": "Shared physical-device budgets, measured concurrency feedback, ready child-parent dependencies",
+    "failure_recovery": "Only after the full first pass; untouched targets retain explicit pending provenance",
+    "quick_resume": "In-session only; no external plan/report imported as retry authority",
+    "crash": "Unknown or partial completion; never automatically rescan to discover a replacement batch",
+    "outcomes": "Paged disk evidence, compact counters, bounded diagnostics; no per-file process startup",
+    "system_protection": "Core-enforced fail-closed nofollow and fresh identity/protection checks"
+  },
+  "semantics": {
+    "quick": "Permanent logical namespace deletion; no content overwrite, verification or secure-erasure promise",
+    "overwrite": "Original verified logical overwrite requirements, authenticated checkpoints and explicit downgrade grants retained",
+    "hardlinks": "Separate selected names; unselected aliases survive; shared contents never overwritten",
+    "space": "Observed allocation may prioritize work; free-space observations are not attributable reclaimed-byte guarantees",
+    "steam": "No verified private Steam uninstall algorithm is claimed",
+    "physical_sanitization_guaranteed": false,
+    "hardware_maximum_throughput_proven": false
+  },
+  "delivery": {
+    "git": "Maintained source/config/docs/assets/tests only; immutable dependency locks",
+    "archive": "Clean single-root Source ZIP, exact commit, manifest and SHA256",
+    "acceptance": "Required unit/integration/isolated destructive gates plus platform evidence; incomplete hardware/platform matrix remains RC"
+  }
+}

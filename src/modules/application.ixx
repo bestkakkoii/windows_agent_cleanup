@@ -20,12 +20,42 @@ export namespace secure_erase::frontend
         double eta_seconds{};
     };
 
+    struct quick_page_item
+    {
+        std::uint64_t index{};
+        quick::target target;
+        std::optional<engine::target_outcome> outcome;
+    };
+
+    struct quick_page
+    {
+        std::string job_id;
+        std::string fingerprint;
+        // CONTRACT: Opaque logical source cursors, not filtered row ordinals.
+        std::uint64_t offset{};
+        std::uint64_t next_offset{};
+        std::uint64_t total{};
+        bool failures_only{};
+        std::vector<quick_page_item> items;
+    };
+
+    struct completed_inputs
+    {
+        std::string job_id;
+        std::string fingerprint;
+        std::vector<std::string> paths;
+    };
+
     struct view_state
     {
         bool busy{};
         bool executing{};
         bool resume_loaded{};
         bool quick_mode{};
+        bool quick_paged{};
+        bool quick_page_loading{};
+        std::shared_ptr<const quick_page> quick_page_data;
+        std::shared_ptr<const completed_inputs> quick_completed_inputs;
         std::vector<quick::space_observation> quick_space;
         bool quick_space_truncated{};
         std::string quick_stage;
@@ -69,6 +99,8 @@ export namespace secure_erase::frontend
         // CONTRACT: Quick plans exist only in this process. Retry never enumerates
         // paths again and always requires fresh consent for the retained exact plan.
         [[nodiscard]] bool preview_quick(std::vector<std::string> paths);
+
+        [[nodiscard]] bool request_quick_page(std::uint64_t offset, bool failures_only);
 
         [[nodiscard]] bool execute_quick(std::string fingerprint, bool irreversible_confirmed);
 

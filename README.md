@@ -4,6 +4,10 @@
 
 <p align="center">Native Windows cleanup for agents. One batch, one compact result.</p>
 
+[![Build and checks](https://github.com/bestkakkoii/windows_agent_cleanup/actions/workflows/ci.yml/badge.svg)](https://github.com/bestkakkoii/windows_agent_cleanup/actions/workflows/ci.yml)
+[![GitHub stars](https://img.shields.io/github/stars/bestkakkoii/windows_agent_cleanup?style=flat&color=22d3ee)](https://github.com/bestkakkoii/windows_agent_cleanup/stargazers)
+[![MIT license](https://img.shields.io/github/license/bestkakkoii/windows_agent_cleanup?color=34d399)](LICENSE)
+
 <p align="center"><img src="assets/hero.svg" alt="Windows Agent Cleanup: a shared native core for agent CLI and desktop GUI"></p>
 
 [繁體中文](README_zh_tw.md) · [Agent entry](README_AI.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
@@ -33,6 +37,17 @@ The direct README route needs no MCP server, Skill installation, Python, Node.js
 - Keeps failure details in external reports while returning compact machine-readable summaries.
 
 Capacity observations are measurements, not a guarantee that the job immediately released a specific number of bytes. Other open handles, remaining hardlinks, shared allocation, and snapshots can retain data or space.
+
+```mermaid
+flowchart TD
+    agent["Codex / Claude Code"] --> cli["Native CLI"]
+    desktop["Desktop user"] --> gui["Compact GUI"]
+    cli --> core["Shared C++ core"]
+    gui --> core
+    core --> batch["Frozen batch storage"]
+    core --> backend["Protected Windows operations"]
+    backend --> storage["HDD / SSD / USB"]
+```
 
 ## Build and inspect
 

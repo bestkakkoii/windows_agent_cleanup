@@ -723,7 +723,7 @@
         "scripts/verify_modules.py"
       ],
       "test_evidence_kind": "source_locations_not_pass_claims",
-      "scope_note": "RC2 owns all public declarations in13 genuine named modules; two private engine partitions encapsulate admission/execution. Every authored C++ unit imports the actual vendor std module. CMake FILE_SET scanning builds real BMIs; no textual owned API or fake std fallback. Portable Clang21 C++26 module evidence is separate from pending native MSVC evidence."
+      "scope_note": "Owned public APIs use genuine C++ named modules; private engine partitions encapsulate admission and execution. Every authored C++ unit imports the vendor std module. CMake scanning builds actual BMIs. External SDK/third-party headers remain at explicit boundaries. See current module checker output and per-run native evidence for current counts/results."
     },
     {
       "id": "R28",
@@ -745,7 +745,7 @@
         "docs/windows_test_plan.md"
       ],
       "test_evidence_kind": "source_locations_not_pass_claims",
-      "scope_note": "MSVC uses actual /std:c++latest. CMake4.4.4 identifies this installed MSVC standard-library mode with standard metadata23; it does not provide an MSVC standard26 mapping. Portable verification uses genuine Clang21 -std=c++26 and libc++ std.cppm. No compiler feature claim follows from a version label alone."
+      "scope_note": "MSVC uses actual /std:c++latest. The locked CMake 4.5 upstream snapshot automatically discovers the vendor std module. Its current MSVC mapping uses standard metadata23; future native26 metadata is selected when it maps to latest. A real import std compile/link probe is mandatory. Portable Clang21 C++26 evidence is separate from native MSVC results."
     },
     {
       "id": "R29",
@@ -841,7 +841,7 @@
       "implementation": [
         "scripts/package.py",
         "scripts/validate.py",
-        "docs/authority.md"
+        "docs/design.md"
       ],
       "test_evidence": [
         "scripts/validate.py"
@@ -1488,8 +1488,7 @@
     }
   ],
   "module_architecture_revision": "2.0.0-rc.1",
-  "additional_mode_amendment": "spec/quick_delete_amendment.json",
-  "cli_quick_amendment": "spec/cli_quick_amendment.json",
   "current_amendment": "spec/project.json",
-  "current_validation_location": "CI artifacts and release evidence, never a tracked per-run report"
+  "current_validation_location": "CI artifacts and release evidence, never a tracked per-run report",
+  "current_cleanup_amendment": "spec/quick_cleanup.json"
 }

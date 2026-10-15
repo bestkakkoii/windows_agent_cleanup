@@ -6,11 +6,13 @@
 #endif
 #include <windows.h>
 #include <bcrypt.h>
+#include <winioctl.h>
 
 import std;
 import secure_erase.state_store;
 import secure_erase.codec;
 import secure_erase.plan;
+import secure_erase.quick_store;
 
 namespace
 {
@@ -200,6 +202,66 @@ namespace
             && done == partial.size() && FlushFileBuffers(file.get());
     }
 
+    void compressed_parent_staging_fixture(test_suite& tests,
+        secure_erase::storage::state_store& store)
+    {
+        unique_handle directory(CreateFileW(store.root_path().c_str(), GENERIC_READ | GENERIC_WRITE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+            FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, nullptr));
+        tests.check("staging_compression_fixture_directory_opened", directory.get() != INVALID_HANDLE_VALUE);
+        if (directory.get() == INVALID_HANDLE_VALUE)
+        {
+            return;
+        }
+        USHORT original{};
+        DWORD received{};
+        if (!DeviceIoControl(directory.get(), FSCTL_GET_COMPRESSION, nullptr, 0,
+            &original, sizeof(original), &received, nullptr))
+        {
+            const auto native = GetLastError();
+            if (native == ERROR_INVALID_FUNCTION || native == ERROR_NOT_SUPPORTED || native == ERROR_INVALID_PARAMETER)
+            {
+                std::cout << "{\"test\":\"staging_compressed_parent_rejected\",\"status\":\"not_run\","
+                    "\"reason\":\"filesystem_compression_unavailable\",\"native_error\":" << native << "}\n";
+            }
+            else
+            {
+                tests.check("staging_compression_fixture_state_read", false);
+            }
+            return;
+        }
+        tests.check("staging_compression_fixture_state_read", received == sizeof(original));
+        if (received != sizeof(original))
+        {
+            return;
+        }
+        USHORT compressed = COMPRESSION_FORMAT_DEFAULT;
+        const bool enabled = DeviceIoControl(directory.get(), FSCTL_SET_COMPRESSION,
+            &compressed, sizeof(compressed), nullptr, 0, &received, nullptr) != FALSE;
+        tests.check("staging_compression_fixture_enabled", enabled);
+        if (!enabled)
+        {
+            return;
+        }
+        FILE_ATTRIBUTE_TAG_INFO tag{};
+        tests.check("staging_compressed_parent_attribute_observed",
+            GetFileInformationByHandleEx(directory.get(), FileAttributeTagInfo, &tag, sizeof(tag)) &&
+                (tag.FileAttributes & FILE_ATTRIBUTE_COMPRESSED) != 0);
+        auto factory = store.staging_files();
+        tests.check("staging_compressed_parent_factory_admitted", factory.has_value());
+        if (factory)
+        {
+            const auto rejected = (*factory)->create_private("compressed_stage_probe.bin");
+            tests.check("staging_compressed_parent_rejected", !rejected &&
+                rejected.error().code == "staging_created_object_unsafe");
+        }
+        const auto leaf = store.root_path() + L"\\compressed_stage_probe.bin";
+        tests.check("staging_rejected_compressed_scratch_removed_on_close",
+            GetFileAttributesW(leaf.c_str()) == INVALID_FILE_ATTRIBUTES && GetLastError() == ERROR_FILE_NOT_FOUND);
+        tests.check("staging_compression_fixture_restored", DeviceIoControl(directory.get(), FSCTL_SET_COMPRESSION,
+            &original, sizeof(original), nullptr, 0, &received, nullptr) != FALSE);
+    }
+
     // SECURITY: Only removes direct children of a random directory created by this test.
     // Never follows reparses or recursively descends; any unexpected directory fails cleanup.
     bool cleanup_test_root(std::wstring_view root)
@@ -339,6 +401,78 @@ int wmain(int argc, wchar_t** argv)
     }
     tests.check("same_process_lock_exclusion", !storage::state_store::open_at(root));
     tests.check("cross_process_lock_exclusion", child_lock_probe(root));
+    compressed_parent_staging_fixture(tests, *store);
+    {
+        auto factory_result = store->staging_files();
+        tests.check("staging_private_factory_created", factory_result.has_value());
+        if (factory_result)
+        {
+            auto factory = std::move(*factory_result);
+            tests.check("staging_path_escape_rejected", !factory->create_private("../outside") &&
+                !factory->create_private("stream:ads") && !factory->create_private(".."));
+            auto file_result = factory->create_private("stage_probe.bin");
+            tests.check("staging_exclusive_scratch_created", file_result.has_value());
+            if (file_result)
+            {
+                auto file = std::move(*file_result);
+                tests.check("staging_duplicate_leaf_rejected", !factory->create_private("stage_probe.bin"));
+                const auto allocated = file->resize(131072);
+                auto length = file->size();
+                tests.check("staging_real_allocation_and_size", allocated && length && *length == 131072);
+                std::array<std::byte, 64> zeros{};
+                zeros.fill(std::byte{0x7f});
+                const auto zero_read = file->read_at(65520, zeros);
+                tests.check("staging_reserved_outcomes_initially_zero", zero_read &&
+                    std::ranges::all_of(zeros, [](std::byte value)
+                    {
+                        return value == std::byte{};
+                    }));
+                const std::array payload{std::byte{0x12}, std::byte{0x34}, std::byte{0x56}, std::byte{0x78}};
+                const auto written = file->write_at(65535, payload);
+                std::array<std::byte, 4> observed{};
+                const auto read = file->read_at(65535, observed);
+                tests.check("staging_exact_random_access_roundtrip", written && read && observed == payload && file->flush());
+                tests.check("staging_invalid_ranges_and_short_reads_fail", !file->read_at(131071, observed) &&
+                    !file->write_at((std::numeric_limits<std::uint64_t>::max)(), payload) &&
+                    !file->resize((std::numeric_limits<std::uint64_t>::max)()));
+                const auto leaf = store->root_path() + L"\\stage_probe.bin";
+                unique_handle metadata(CreateFileW(leaf.c_str(), FILE_READ_ATTRIBUTES,
+                    FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+                    FILE_FLAG_OPEN_REPARSE_POINT, nullptr));
+                FILE_STANDARD_INFO allocation{};
+                tests.check("staging_filesystem_allocation_reserved", metadata.get() != INVALID_HANDLE_VALUE &&
+                    GetFileInformationByHandleEx(metadata.get(), FileStandardInfo, &allocation, sizeof(allocation)) &&
+                    allocation.AllocationSize.QuadPart >= 131072);
+                metadata.reset();
+                unique_handle writer(CreateFileW(leaf.c_str(), GENERIC_WRITE,
+                    FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+                    FILE_FLAG_OPEN_REPARSE_POINT, nullptr));
+                const auto writer_error = GetLastError();
+                tests.check("staging_external_write_denied", writer.get() == INVALID_HANDLE_VALUE &&
+                    (writer_error == ERROR_SHARING_VIOLATION || writer_error == ERROR_ACCESS_DENIED));
+                const bool externally_deleted = DeleteFileW(leaf.c_str()) != FALSE;
+                const auto delete_error = GetLastError();
+                tests.check("staging_external_delete_denied", !externally_deleted &&
+                    (delete_error == ERROR_SHARING_VIOLATION || delete_error == ERROR_ACCESS_DENIED));
+                tests.check("staging_only_owned_cleanup_names_accepted", !factory->remove_private("unrelated.bin") &&
+                    factory->remove_private("stage_probe.bin"));
+                store.reset();
+                tests.check("staging_owners_retain_exclusive_store_lock", !storage::state_store::open_at(root));
+                factory.reset();
+                tests.check("staging_file_alone_retains_store_lock", !storage::state_store::open_at(root));
+                file.reset();
+                tests.check("staging_scratch_removed_on_final_close", GetFileAttributesW(leaf.c_str()) == INVALID_FILE_ATTRIBUTES &&
+                    GetLastError() == ERROR_FILE_NOT_FOUND);
+                auto reopened = storage::state_store::open_at(root, options);
+                tests.check("staging_final_owner_releases_store_lock", reopened.has_value());
+                if (!reopened)
+                {
+                    return tests.finish();
+                }
+                store = std::move(*reopened);
+            }
+        }
+    }
     auto first = fixture();
     auto saved = store->save(first);
     tests.check("protected_checkpoint_save", saved.has_value());

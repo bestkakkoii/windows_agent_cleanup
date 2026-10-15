@@ -102,12 +102,13 @@ endfunction()
 
 find_package(Threads REQUIRED)
 add_library(secure_erase_engine STATIC src/core/crypto.cpp src/core/plan.cpp src/core/engine.cpp
-    src/core/codec.cpp src/core/quick_delete.cpp
+    src/core/codec.cpp src/core/quick_delete.cpp src/core/quick_store.cpp
     src/app/cli_arguments.cpp src/app/agent_protocol.cpp)
 target_sources(secure_erase_engine PUBLIC FILE_SET public_modules TYPE CXX_MODULES FILES
     src/modules/model.ixx src/modules/configuration.ixx src/modules/platform.ixx
     src/modules/crypto.ixx src/modules/plan.ixx src/modules/engine.ixx src/modules/codec.ixx src/modules/quick_delete.ixx
-    src/modules/cli_arguments.ixx src/modules/agent_protocol.ixx src/modules/metadata.ixx)
+    src/modules/cli_arguments.ixx src/modules/agent_protocol.ixx src/modules/metadata.ixx
+    src/modules/quick_store.ixx)
 target_sources(secure_erase_engine PRIVATE FILE_SET implementation_partitions TYPE CXX_MODULES FILES
     src/core/engine_admission.cpp src/core/engine_execution.cpp)
 target_link_libraries(secure_erase_engine PUBLIC Threads::Threads)
@@ -115,7 +116,7 @@ secure_erase_configure_target(secure_erase_engine)
 add_library(secure_erase_core ALIAS secure_erase_engine)
 
 enable_testing()
-foreach(test_name IN ITEMS crypto engine codec cli_arguments agent_protocol quick_delete)
+foreach(test_name IN ITEMS crypto engine codec cli_arguments agent_protocol quick_delete quick_store)
     add_executable(secure_erase_${test_name}_tests tests/${test_name}_tests.cpp)
     target_link_libraries(secure_erase_${test_name}_tests PRIVATE secure_erase_engine)
     secure_erase_configure_target(secure_erase_${test_name}_tests)
@@ -201,6 +202,11 @@ if(NOT SECURE_ERASE_PORTABLE_TEST_ONLY)
     add_test(NAME cli_help COMMAND secure_erase_cli --help)
     set_tests_properties(cli_help PROPERTIES LABELS "safe;windows" TIMEOUT 30)
     if(secure_erase_enable_destructive_tests)
+        add_test(NAME agent_cli_windows_isolated COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass
+            -File ${CMAKE_SOURCE_DIR}/tests/agent_cli_windows_tests.ps1
+            -cli $<TARGET_FILE:secure_erase_cli>)
+        set_tests_properties(agent_cli_windows_isolated PROPERTIES LABELS "destructive;windows;agent"
+            TIMEOUT 300 SKIP_RETURN_CODE 77)
         add_executable(secure_erase_windows_backend_tests tests/windows_backend_tests.cpp)
         target_link_libraries(secure_erase_windows_backend_tests PRIVATE secure_erase_windows)
         secure_erase_configure_target(secure_erase_windows_backend_tests)

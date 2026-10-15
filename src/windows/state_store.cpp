@@ -18,6 +18,7 @@ module secure_erase.state_store;
 import std;
 import secure_erase.codec;
 import secure_erase.crypto;
+import secure_erase.quick_store;
 
 namespace secure_erase::storage
 {
@@ -297,6 +298,8 @@ namespace secure_erase::storage
 
     struct state_store::implementation
     {
+        struct staging_file;
+        struct staging_factory;
         store_options settings;
         std::wstring root;
         std::vector<std::byte> user_sid;
@@ -773,7 +776,329 @@ namespace secure_erase::storage
         }
     };
 
-    state_store::state_store(std::unique_ptr<implementation> state) noexcept
+    struct state_store::implementation::staging_file final : quick::store::random_access_file
+    {
+        std::shared_ptr<implementation> owner;
+        unique_handle file;
+        mutable std::mutex mutex;
+
+        staging_file(std::shared_ptr<implementation> state, unique_handle value)
+            : owner(std::move(state)), file(std::move(value))
+        {
+        }
+
+        engine::result<void> seek(std::uint64_t offset)
+        {
+            if (offset > static_cast<std::uint64_t>((std::numeric_limits<LONGLONG>::max)()))
+            {
+                return std::unexpected(failure("staging_offset_invalid", ERROR_INVALID_PARAMETER));
+            }
+            LARGE_INTEGER position{};
+            position.QuadPart = static_cast<LONGLONG>(offset);
+            if (!SetFilePointerEx(file.get(), position, nullptr, FILE_BEGIN))
+            {
+                return std::unexpected(failure("staging_seek_failed"));
+            }
+            return {};
+        }
+
+        engine::result<void> check_range(std::uint64_t offset, std::size_t length)
+        {
+            const auto limit = static_cast<std::uint64_t>((std::numeric_limits<LONGLONG>::max)());
+            if (offset > limit || length > limit - offset)
+            {
+                return std::unexpected(failure("staging_range_invalid", ERROR_INVALID_PARAMETER));
+            }
+            return {};
+        }
+
+        engine::result<void> read_at(std::uint64_t offset, std::span<std::byte> output) override
+        {
+            const std::scoped_lock lock(mutex);
+            auto positioned = check_range(offset, output.size());
+            if (positioned)
+            {
+                positioned = seek(offset);
+            }
+            if (!positioned)
+            {
+                return positioned;
+            }
+            std::size_t done{};
+            while (done < output.size())
+            {
+                const auto wanted = static_cast<DWORD>((std::min)(output.size() - done,
+                    static_cast<std::size_t>(1024 * 1024)));
+                DWORD received{};
+                if (!ReadFile(file.get(), output.data() + done, wanted, &received, nullptr))
+                {
+                    return std::unexpected(failure("staging_read_failed"));
+                }
+                if (received == 0 || received > wanted)
+                {
+                    return std::unexpected(failure("staging_read_short", ERROR_HANDLE_EOF));
+                }
+                done += received;
+            }
+            return {};
+        }
+
+        engine::result<void> write_locked(std::span<const std::byte> input)
+        {
+            std::size_t done{};
+            while (done < input.size())
+            {
+                const auto wanted = static_cast<DWORD>((std::min)(input.size() - done,
+                    static_cast<std::size_t>(1024 * 1024)));
+                DWORD written{};
+                if (!WriteFile(file.get(), input.data() + done, wanted, &written, nullptr))
+                {
+                    return std::unexpected(failure("staging_write_failed"));
+                }
+                if (written == 0 || written > wanted)
+                {
+                    return std::unexpected(failure("staging_write_no_progress", ERROR_WRITE_FAULT));
+                }
+                done += written;
+            }
+            return {};
+        }
+
+        engine::result<void> write_at(std::uint64_t offset, std::span<const std::byte> input) override
+        {
+            const std::scoped_lock lock(mutex);
+            auto positioned = check_range(offset, input.size());
+            if (positioned)
+            {
+                positioned = seek(offset);
+            }
+            if (!positioned)
+            {
+                return positioned;
+            }
+            return write_locked(input);
+        }
+
+        engine::result<void> resize(std::uint64_t bytes) override
+        {
+            const std::scoped_lock lock(mutex);
+            auto valid = check_range(bytes, 0);
+            if (!valid)
+            {
+                return valid;
+            }
+            LARGE_INTEGER previous{};
+            if (!GetFileSizeEx(file.get(), &previous) || previous.QuadPart < 0)
+            {
+                return std::unexpected(failure("staging_size_failed"));
+            }
+            const auto old_size = static_cast<std::uint64_t>(previous.QuadPart);
+            if (bytes > old_size)
+            {
+                FILE_ALLOCATION_INFO allocation{};
+                allocation.AllocationSize.QuadPart = static_cast<LONGLONG>(bytes);
+                if (!SetFileInformationByHandle(file.get(), FileAllocationInfo, &allocation, sizeof(allocation)))
+                {
+                    const auto native = GetLastError();
+                    if (native != ERROR_INVALID_FUNCTION && native != ERROR_NOT_SUPPORTED &&
+                        native != ERROR_INVALID_PARAMETER)
+                    {
+                        return std::unexpected(failure("staging_allocation_failed", native));
+                    }
+                }
+                valid = seek(old_size);
+                if (!valid)
+                {
+                    return valid;
+                }
+                // Actual bounded writes reserve every outcome byte. Merely
+                // extending EOF or setting valid-data length is insufficient.
+                const std::array<std::byte, 65536> zeros{};
+                auto remaining = bytes - old_size;
+                while (remaining != 0)
+                {
+                    const auto count = static_cast<std::size_t>((std::min)(remaining,
+                        static_cast<std::uint64_t>(zeros.size())));
+                    valid = write_locked(std::span(zeros).first(count));
+                    if (!valid)
+                    {
+                        return valid;
+                    }
+                    remaining -= count;
+                }
+            }
+            valid = seek(bytes);
+            if (!valid)
+            {
+                return valid;
+            }
+            if (!SetEndOfFile(file.get()))
+            {
+                return std::unexpected(failure("staging_resize_failed"));
+            }
+            FILE_STANDARD_INFO allocated{};
+            if (!GetFileInformationByHandleEx(file.get(), FileStandardInfo, &allocated, sizeof(allocated)) ||
+                allocated.AllocationSize.QuadPart < 0 ||
+                static_cast<std::uint64_t>(allocated.AllocationSize.QuadPart) < bytes)
+            {
+                return std::unexpected(failure("staging_reservation_not_established", ERROR_DISK_FULL));
+            }
+            return {};
+        }
+
+        engine::result<void> flush() override
+        {
+            const std::scoped_lock lock(mutex);
+            if (!FlushFileBuffers(file.get()))
+            {
+                return std::unexpected(failure("staging_flush_failed"));
+            }
+            return {};
+        }
+
+        engine::result<std::uint64_t> size() const override
+        {
+            const std::scoped_lock lock(mutex);
+            LARGE_INTEGER length{};
+            if (!GetFileSizeEx(file.get(), &length) || length.QuadPart < 0)
+            {
+                return std::unexpected(failure("staging_size_failed"));
+            }
+            return static_cast<std::uint64_t>(length.QuadPart);
+        }
+    };
+
+    struct state_store::implementation::staging_factory final : quick::store::file_factory
+    {
+        std::shared_ptr<implementation> owner;
+        std::mutex mutex;
+        std::map<std::string, std::weak_ptr<staging_file>, std::less<>> created;
+
+        explicit staging_factory(std::shared_ptr<implementation> value) : owner(std::move(value))
+        {
+        }
+
+        engine::result<void> check_ancestry() const
+        {
+            for (const auto& directory : owner->pinned_directories)
+            {
+                FILE_ATTRIBUTE_TAG_INFO tag{};
+                FILE_STANDARD_INFO standard{};
+                if (!GetFileInformationByHandleEx(directory.get(), FileAttributeTagInfo, &tag, sizeof(tag)) ||
+                    !GetFileInformationByHandleEx(directory.get(), FileStandardInfo, &standard, sizeof(standard)))
+                {
+                    return std::unexpected(failure("staging_ancestor_query_failed"));
+                }
+                if ((tag.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0 ||
+                    !standard.Directory || standard.DeletePending)
+                {
+                    return std::unexpected(failure("staging_ancestor_changed", ERROR_ACCESS_DENIED));
+                }
+            }
+            return owner->verify_acl(owner->pinned_directories.back().get());
+        }
+
+        engine::result<std::shared_ptr<quick::store::random_access_file>> create_private(
+            std::string_view name) override
+        {
+            if (name.empty() || name.size() > 255 || name == "." || name == ".." ||
+                name.back() == '.' || !std::ranges::all_of(name, [](char character)
+                {
+                    return (character >= 'a' && character <= 'z') ||
+                        (character >= '0' && character <= '9') || character == '_' || character == '-' || character == '.';
+                }))
+            {
+                return std::unexpected(failure("staging_leaf_invalid", ERROR_INVALID_NAME));
+            }
+            const std::scoped_lock lock(mutex);
+            if (created.contains(name))
+            {
+                return std::unexpected(failure("staging_leaf_already_owned", ERROR_ALREADY_EXISTS));
+            }
+            auto ancestors = check_ancestry();
+            if (!ancestors)
+            {
+                return std::unexpected(ancestors.error());
+            }
+            const auto path = owner->root + L"\\" + widen_ascii(name);
+            auto attributes = owner->security_attributes();
+            unique_handle file(CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE | DELETE | READ_CONTROL,
+                0, &attributes, CREATE_NEW,
+                FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_RANDOM_ACCESS |
+                    FILE_FLAG_DELETE_ON_CLOSE, nullptr));
+            if (file.get() == INVALID_HANDLE_VALUE)
+            {
+                return std::unexpected(failure("staging_create_failed"));
+            }
+            auto canonical = final_path(file.get());
+            FILE_ATTRIBUTE_TAG_INFO tag{};
+            FILE_STANDARD_INFO standard{};
+            if (!canonical || !equal_path(*canonical, path) ||
+                !GetFileInformationByHandleEx(file.get(), FileAttributeTagInfo, &tag, sizeof(tag)) ||
+                !GetFileInformationByHandleEx(file.get(), FileStandardInfo, &standard, sizeof(standard)) ||
+                (tag.FileAttributes & (FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_COMPRESSED |
+                    FILE_ATTRIBUTE_SPARSE_FILE)) != 0 || standard.Directory ||
+                standard.NumberOfLinks != 1)
+            {
+                return std::unexpected(failure("staging_created_object_unsafe", ERROR_ACCESS_DENIED));
+            }
+            ancestors = check_ancestry();
+            if (!ancestors)
+            {
+                return std::unexpected(ancestors.error());
+            }
+            auto acl = owner->verify_acl(file.get());
+            if (!acl)
+            {
+                return std::unexpected(acl.error());
+            }
+            auto value = std::make_shared<staging_file>(owner, std::move(file));
+            created.emplace(std::string(name), value);
+            return std::shared_ptr<quick::store::random_access_file>(std::move(value));
+        }
+
+        engine::result<void> remove_private(std::string_view name) override
+        {
+            const std::scoped_lock lock(mutex);
+            const auto found = created.find(name);
+            if (found == created.end())
+            {
+                return std::unexpected(failure("staging_leaf_not_owned", ERROR_INVALID_PARAMETER));
+            }
+            // The created handle already owns DELETE_ON_CLOSE. Never reopen or
+            // delete a pathname: the last shared file owner releases allocation.
+            created.erase(found);
+            return {};
+        }
+
+        engine::result<std::uint64_t> available_bytes() override
+        {
+            auto valid = check_ancestry();
+            if (!valid)
+            {
+                return std::unexpected(valid.error());
+            }
+            ULARGE_INTEGER available{};
+            if (!GetDiskFreeSpaceExW(owner->root.c_str(), &available, nullptr, nullptr))
+            {
+                return std::unexpected(failure("staging_disk_space_failed"));
+            }
+            return available.QuadPart;
+        }
+    };
+
+    engine::result<std::shared_ptr<quick::store::file_factory>> state_store::staging_files()
+    {
+        auto factory = std::make_shared<implementation::staging_factory>(state_);
+        const auto valid = factory->check_ancestry();
+        if (!valid)
+        {
+            return std::unexpected(valid.error());
+        }
+        return std::shared_ptr<quick::store::file_factory>(std::move(factory));
+    }
+
+    state_store::state_store(std::shared_ptr<implementation> state) noexcept
         : state_(std::move(state))
     {
     }
@@ -802,7 +1127,7 @@ namespace secure_erase::storage
         {
             return std::unexpected(failure("state_invalid_options", ERROR_INVALID_PARAMETER));
         }
-        auto state = std::make_unique<implementation>();
+        auto state = std::make_shared<implementation>();
         state->settings = settings;
         HANDLE raw_token{};
         if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &raw_token))

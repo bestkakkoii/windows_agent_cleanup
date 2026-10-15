@@ -24,7 +24,6 @@ function check([bool]$condition, [string]$name)
     emit_event @{ test = $name; passed = $condition }
     if (-not $condition)
     {
-        $script:failed++
         throw ('assertion_failed:' + $name)
     }
 }
@@ -179,7 +178,7 @@ try
     {
         [void][System.IO.Directory]::CreateDirectory($directory)
     }
-    $single = Join-Path $scope 'single file.txt'
+    $single = Join-Path $scope 'single file_臺灣.txt'
     $selected_directory = Join-Path $scope 'disposable'
     $nested = Join-Path $selected_directory 'nested'
     [void][System.IO.Directory]::CreateDirectory($nested)
@@ -200,8 +199,7 @@ try
         [System.IO.File]::Exists($single) -and -not [System.IO.Directory]::Exists($reports)) 'missing_authorization_no_mutation'
 
     $scan = invoke_cli (@('scan', '--request-id', 'scan_one') + $common)
-    if ($scan.record.error_code -in @('elevation_required', 'state_root_not_fixed_local', 'state_acl_not_private',
-        'state_directory_create_failed', 'scope_report_overlap_or_reparse'))
+    if ($scan.record.error_code -in @('elevation_required', 'state_root_not_fixed_local'))
     {
         emit_event @{ status = 'not_run'; reason = 'fixture_environment_unavailable'; error_code = $scan.record.error_code; checks = $script:checks }
         $exit_code = 77
