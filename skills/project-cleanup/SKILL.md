@@ -5,95 +5,31 @@ description: Inspect and clean disposable Windows project residues, build produc
 
 # Project cleanup
 
-Use the native Windows Agent Cleanup CLI for one coordinated bulk job. Keep
-reasoning about disposability in the Agent and enforce filesystem safety in the
-native engine. Reading this Skill does not authorize deleting anything.
+1. Require local Windows 11+ x64 filesystem/process access; bind this exact distribution.
+2. Reuse established plan, absolute project scope and deletion authority; ask only for missing choices.
+3. Offer default automatic cleanup, custom literal selection or scan only; installation/development grants no deletion authority.
+4. For default discovery/uncertain provenance read [disposal evidence](references/disposal_evidence.md); preserve uncertainty. Honor explicit custom selections; scan never mutates.
+5. Bind the root from the absolute README or intact installed binding; read [tool location](references/tool_location.md) only if unbound. Never substitute PATH's EXE or auto-build missing binaries.
+6. Use `<tool_root>/bin/secure_erase_cli.exe`, or the documented already-built checkout location. Query `capabilities` once per unknown EXE hash; opt into `--contract-version 2` only when the intact runtime manifest advertises it for that hash. Legacy/unadvertised bundles retain v1; cache static protocol data, never mutable host readiness.
+7. Require an already elevated supported execution host. For advertised v2 use `capabilities --contract-version 2`: `filesystem_commands_ready:null` is unknown. Missing privilege needs the real OS-consent handoff; do not self-elevate, collect credentials or change policy. Refresh readiness in the actual new host; readiness does not admit targets.
+8. Resolve one absolute literal authorization root; it does not select all descendants. Select a directory only if its complete existing subtree is disposable.
+9. Stream one `{"path":absolute_literal_path}` object per selected target as BOM-free UTF-8 JSONL, using a standard serializer; no wildcards, ADS, dot components or invented fields.
+10. Keep the manifest outside the root/targets and reports disjoint from the root in both directions. Use an existing writable parent; let the CLI protect its report store.
+11. Bind `$cli`, `$root`, `$manifest`, `$reports` and a fresh `$new_id` (1–128 ASCII letters/digits/`_`/`-`) to the authorized job, then invoke once:
 
-## Select the plan and scope
+```powershell
+$contract_args = @() # Use @('--contract-version', '2') only after advertised support.
+& $cli run --mode quick --request-id $new_id --root $root `
+  --manifest $manifest --report-dir $reports --authorize-irreversible @contract_args
+```
 
-1. Reuse the user's existing explicit plan and absolute project scope. If either
-   is missing, ask once: “Which plan: default automatic cleanup, custom
-   directory/list cleanup, or scan only? Which absolute project directory?”
-2. Apply the selected plan:
-   - **Default automatic cleanup:** discover and remove only positively proven
-     disposable project material. Preserve uncertain items without blocking the
-     rest of the authorized batch.
-   - **Custom directory/list cleanup:** use the user's literal selection and
-     preservation rules; do not widen it.
-   - **Scan only:** inspect and report candidates; never invoke deletion.
-3. Read [disposal evidence](references/disposal_evidence.md) before default-plan
-   discovery or whenever a candidate's provenance is unclear. Names, age,
-   untracked/ignored status, missing references and equal bytes are insufficient
-   by themselves. Do not infer that all project contents are disposable.
-4. Treat code/build/review requests as engineering work. Follow the bound tool's
-   `README_AI.md` engineering route: a source checkout supplies `AGENTS.md` and
-   `CLAUDE.md`; the binary bundle routes to the source repository. Do not clean
-   as setup. Expanding scope or changing scan-only into deletion needs a new choice.
-
-Once a cleanup plan and scope are authorized, carry it through without per-file
-confirmation. Quick logical deletion is the default. Overwrite and forced
-process termination require their own explicit authorization.
-
-## Bind the tool and discover in groups
-
-Read [tool location](references/tool_location.md) to bind this Skill to its
-actual distribution. Resolve links relative to this Skill, not the target
-project or current working directory. Paths in examples are not installation
-requirements; choose a suitable writable local tool location when setup is
-authorized and none is supplied. Keep tool location separate from cleanup scope
-and client Skill discovery directories. Require access to the same Windows
-machine and an already elevated process for filesystem commands. Do not use an
-unrelated executable from PATH or request UAC through the CLI.
-
-Query `capabilities` once for an unknown executable revision and reuse that
-binding for unchanged consecutive calls. Do not probe capabilities, storage or
-locks per file. Use native directory enumeration and streamed manifests rather
-than passing all filenames through the model or spawning a process per file.
-
-Inspect provenance, regeneration steps, current consumers and retention rules.
-Coordinate active builds/watchers before selecting their outputs; do not chase
-newly generated files. Delegate read-only inspection of disjoint subtrees when
-useful. Give each child the selected plan, absolute scope, preservation rules,
-this Skill's path, and a bounded evidence summary destination. Keep one
-coordinator responsible for decisions, deduplication and execution; children
-must not issue overlapping deletions.
-
-## Submit and complete one batch
-
-1. Read [bulk CLI](references/bulk_cli.md) before the first batch or when composing
-   a new command. Prefer one directory record only when its complete subtree is
-   disposable. Otherwise select individual literal names. Preserve separate
-   selected hardlink names. Never use wildcard expansion or select the scope
-   root merely because it authorizes descendants.
-2. Stream a UTF-8 JSONL manifest using a standard serializer outside the
-   authorized root and all selected targets. Place reports in a private store
-   outside that root in both directions. Submit one native invocation per
-   coordinated root/batch, not one per file. Let automatic resource admission
-   and per-device scheduling use current hardware and resource availability;
-   there is no fixed maximum target count.
-3. For deletion use `run --mode quick` with the irreversible authorization flag
-   only after the selected plan authorizes it. For scan use `scan --mode quick`
-   without that flag. Do not force a redundant scan before every quick run:
-   the run itself freezes and validates its full membership before mutation.
-4. Read [results and recovery](references/results_and_recovery.md) to interpret
-   the final result or handle yielding, partial completion, locks or failure.
-   Wait on the same process/session if the host yields. Never submit a second
-   deletion merely because the first call timed out.
-5. Match the one JSON result to the request, check status, counts and exit code,
-   then report totals, retained uncertainty, material failures and report path.
-   Missing final evidence means unknown/partial completion, not success. Read
-   only filtered failure evidence; keep huge path lists out of context.
-
-Do not automatically replay a crashed quick batch or rescan it into a new run:
-new names/replacements are outside its frozen membership. Do not claim physical
-sanitization, instant free-space release or theoretical maximum throughput from
-a successful quick result.
-
-## Conditional operations
-
-Read [overwrite and process actions](references/exceptional_operations.md) only
-for explicitly requested overwrite, authenticated overwrite recovery, lock
-inspection or separately authorized process release. Default quick cleanup
-already defers native failure recovery until after its fast first pass. Do not
-preemptively inspect locks, weaken native identity checks or escalate a normal
-close into forced termination.
+12. For scan only use `scan` and omit `--authorize-irreversible`. Scan is advisory; it does not authorize/bind a later run. Do not add a redundant mandatory scan.
+13. Omit scheduling overrides unless needed; submit one coordinated batch, never a process per file. Native admission has no fixed target-count ceiling.
+14. Wait on the same process/session; timeout/yield never authorizes a second run. Match request ID, status, counts and exit code in the one final JSON result.
+15. Exit meanings: `0` completed/scanned; `2` admission/input/privilege refusal; `3` partial/failure; `4` report/output failure; `5` interrupted. Empty `error_code` alone is not success.
+16. For failures, lost/partial output or schema integration read [results and reconciliation](references/results_and_recovery.md); inspect relevant external `report_file` rows. Unknown completion means preserve intent/results and reconcile, never replay/rescan as authority.
+17. Quick scratch is ephemeral: no automatic retry or cross-process resume. Logical removal proves neither physical sanitization nor immediately reusable capacity.
+18. Read [bulk CLI details](references/bulk_cli.md) only for extended grammar, resource/retention overrides or maintained PS5.1/7 caller plumbing. Keep detailed path lists external and label byte totals by their actual semantics.
+19. Read [exceptional operations](references/exceptional_operations.md) only for separately authorized overwrite, downgrade, overwrite recovery or process actions; normal Quick defers recovery until after its fast first pass.
+20. Coordinate disjoint read-only discovery when useful; one coordinator owns deduplication and mutation. Give delegates scope/authority/exclusions and this Skill; use concise technical English and propagate that policy.
+21. Report completed/failed/pending totals, retained uncertainty, material failures and evidence location; do not claim unmeasured maximum speed or token savings.

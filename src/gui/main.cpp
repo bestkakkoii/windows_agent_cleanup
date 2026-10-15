@@ -1209,6 +1209,22 @@ namespace
             if (view.quick_mode)
             {
                 ImGui::Text("Completed %zu | Failed %zu | Pending %zu", view.completed_count, view.failed_count, view.quick_pending);
+                if (view.quick_statistics.supported)
+                {
+                    const auto& statistics = view.quick_statistics;
+                    const auto counts = std::format("Files {} / {} | Directories {} / {} | Unclassified {}",
+                        statistics.completed.files, statistics.selected.files,
+                        statistics.completed.directories, statistics.selected.directories,
+                        statistics.selected.unclassified);
+                    ImGui::TextUnformatted(counts.c_str());
+                    const auto bytes = std::format("Removed snapshot logical bytes: {} | Unknown sizes: {}",
+                        statistics.logical_bytes.completed, statistics.logical_bytes.completed_unknown);
+                    ImGui::TextDisabled("%s", bytes.c_str());
+                    if (ImGui::IsItemHovered())
+                    {
+                        ImGui::SetTooltip("Known default-stream lengths captured before deletion. This is neither allocated space nor an attributable free-space increase.");
+                    }
+                }
             }
             else
             {

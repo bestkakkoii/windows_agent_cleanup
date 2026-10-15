@@ -1,0 +1,723 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "windows_agent_cleanup.result.v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "request_id",
+    "job_id",
+    "plan_fingerprint",
+    "mode",
+    "status",
+    "counts",
+    "error_code",
+    "native_code",
+    "report_file",
+    "resumable",
+    "advisory",
+    "readiness",
+    "statistics",
+    "phases_ms",
+    "space_observations",
+    "next_action",
+    "retry_safe"
+  ],
+  "properties": {
+    "schema": {
+      "const": "windows_agent_cleanup.result.v2"
+    },
+    "request_id": {
+      "type": "string"
+    },
+    "job_id": {
+      "type": "string"
+    },
+    "plan_fingerprint": {
+      "type": "string"
+    },
+    "mode": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "error_code": {
+      "type": "string"
+    },
+    "report_file": {
+      "type": "string"
+    },
+    "native_code": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "targets",
+        "completed",
+        "failed",
+        "pending"
+      ],
+      "properties": {
+        "targets": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "completed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pending": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "resumable": {
+      "type": "boolean"
+    },
+    "advisory": {
+      "type": "boolean"
+    },
+    "readiness": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/readiness"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "statistics": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/statistics"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Quick core unique frozen-entry aggregates; null when unsupported. Logical bytes are known default-stream snapshot sums; unknown counts disclose incompleteness."
+    },
+    "phases_ms": {
+      "$ref": "#/$defs/phases_ms",
+      "description": "Steady-clock wall milliseconds. Manifest consumption/preparation is streamed together; freeze is staging finalization. Reporting starts at core return or scan report generation and ends at final construction. Total starts at wmain entry and excludes final report/stdout delivery and teardown. Unmeasured phases are null."
+    },
+    "space_observations": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/space_observations"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "next_action": {
+      "$ref": "#/$defs/next_action"
+    },
+    "retry_safe": {
+      "type": "boolean",
+      "description": "Positive operation-specific evidence of a pre-dispatch refusal only; never deletion authority. False includes uncertain or admitted outcomes."
+    }
+  },
+  "$defs": {
+    "readiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required_windows_build",
+        "required_native_architecture",
+        "required_process_architecture",
+        "observed_windows_build",
+        "native_architecture",
+        "process_architecture",
+        "platform_supported",
+        "elevated",
+        "filesystem_commands_ready",
+        "observation_errors"
+      ],
+      "properties": {
+        "required_windows_build": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "required_native_architecture": {
+          "enum": [
+            "unknown",
+            "x86",
+            "x64",
+            "arm64",
+            "arm",
+            "other"
+          ]
+        },
+        "required_process_architecture": {
+          "enum": [
+            "unknown",
+            "x86",
+            "x64",
+            "arm64",
+            "arm",
+            "other"
+          ]
+        },
+        "observed_windows_build": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "native_architecture": {
+          "enum": [
+            "unknown",
+            "x86",
+            "x64",
+            "arm64",
+            "arm",
+            "other"
+          ]
+        },
+        "process_architecture": {
+          "enum": [
+            "unknown",
+            "x86",
+            "x64",
+            "arm64",
+            "arm",
+            "other"
+          ]
+        },
+        "platform_supported": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "elevated": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "filesystem_commands_ready": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "observation_errors": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "platform",
+            "architecture",
+            "elevation"
+          ],
+          "properties": {
+            "platform": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "code",
+                    "native_code"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "native_code": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4294967295
+                    }
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "architecture": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "code",
+                    "native_code"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "native_code": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4294967295
+                    }
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "elevation": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "code",
+                    "native_code"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "native_code": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4294967295
+                    }
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "next_action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "action",
+        "reason"
+      ],
+      "properties": {
+        "action": {
+          "enum": [
+            "none",
+            "use_supported_host",
+            "request_os_consent",
+            "correct_input",
+            "inspect_report",
+            "wait_same_invocation",
+            "reconcile_unknown"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 128
+        }
+      }
+    },
+    "statistics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "selected",
+        "remove_attempted",
+        "completed",
+        "logical_bytes_semantics",
+        "logical_bytes",
+        "failed",
+        "pending",
+        "final_failures"
+      ],
+      "properties": {
+        "selected": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "files",
+            "directories",
+            "unclassified"
+          ],
+          "properties": {
+            "files": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 18446744073709551615
+            },
+            "directories": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 18446744073709551615
+            },
+            "unclassified": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 18446744073709551615
+            }
+          }
+        },
+        "remove_attempted": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "files",
+            "directories",
+            "unclassified"
+          ],
+          "properties": {
+            "files": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 18446744073709551615
+            },
+            "directories": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 18446744073709551615
+            },
+            "unclassified": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 18446744073709551615
+            }
+          }
+        },
+        "completed": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "files",
+            "directories",
+            "unclassified"
+          ],
+          "properties": {
+            "files": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 18446744073709551615
+            },
+            "directories": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 18446744073709551615
+            },
+            "unclassified": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 18446744073709551615
+            }
+          }
+        },
+        "logical_bytes_semantics": {
+          "const": "frozen_default_stream_snapshot"
+        },
+        "logical_bytes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "selected",
+            "remove_attempted",
+            "completed",
+            "selected_unknown",
+            "remove_attempted_unknown",
+            "completed_unknown"
+          ],
+          "properties": {
+            "selected": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 18446744073709551615
+            },
+            "remove_attempted": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 18446744073709551615
+            },
+            "completed": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 18446744073709551615
+            },
+            "selected_unknown": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 18446744073709551615
+            },
+            "remove_attempted_unknown": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 18446744073709551615
+            },
+            "completed_unknown": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 18446744073709551615
+            }
+          }
+        },
+        "failed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        },
+        "pending": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        },
+        "final_failures": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "scope_protection",
+            "reparse",
+            "identity",
+            "access_lock",
+            "resource",
+            "report_audit",
+            "other"
+          ],
+          "properties": {
+            "scope_protection": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 18446744073709551615
+            },
+            "reparse": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 18446744073709551615
+            },
+            "identity": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 18446744073709551615
+            },
+            "access_lock": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 18446744073709551615
+            },
+            "resource": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 18446744073709551615
+            },
+            "report_audit": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 18446744073709551615
+            },
+            "other": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 18446744073709551615
+            }
+          }
+        }
+      }
+    },
+    "phases_ms": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "manifest_preparation_ms",
+        "freeze_ms",
+        "first_pass_ms",
+        "recovery_ms",
+        "reporting_before_result_ms",
+        "total_to_result_ms"
+      ],
+      "properties": {
+        "manifest_preparation_ms": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "freeze_ms": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "first_pass_ms": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "recovery_ms": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reporting_before_result_ms": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "total_to_result_ms": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "space_observations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "semantics",
+        "truncated",
+        "volumes"
+      ],
+      "properties": {
+        "semantics": {
+          "const": "observed_available_to_caller_not_attributed_reclaim"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "volumes": {
+          "type": "array",
+          "maxItems": 128,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "volume_key",
+              "before_available_to_caller_bytes",
+              "after_available_to_caller_bytes",
+              "delta_available_to_caller_bytes",
+              "before_error_code",
+              "before_native_code",
+              "after_error_code",
+              "after_native_code"
+            ],
+            "properties": {
+              "volume_key": {
+                "type": "string"
+              },
+              "before_available_to_caller_bytes": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 18446744073709551615
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "after_available_to_caller_bytes": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 18446744073709551615
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "delta_available_to_caller_bytes": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": -9223372036854775807,
+                    "maximum": 9223372036854775807
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "before_error_code": {
+                "type": "string"
+              },
+              "before_native_code": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              "after_error_code": {
+                "type": "string"
+              },
+              "after_native_code": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 4294967295
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

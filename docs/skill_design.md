@@ -10,11 +10,11 @@ no copied product engine, placeholder assets, extra runtime, hooks or MCP.
 |---|---|
 | `README.md`, `README_zh_tw.md` | Human-facing purpose, download/getting started, limitations, support and contribution links. They are not always-loaded Agent policy. |
 | `README_AI.md` | Manually selected universal entry: route the current task, resolve the actual program root and link deeper procedures. No claim of native autoloading. |
-| `skills/project-cleanup/SKILL.md` | Trigger metadata and reusable execution workflow: predefined plans, authorization, group discovery, batching, result handling and conditional resource map. |
-| `references/tool_location.md` | Small distribution-relative or installation-bound tool location. Read when binding the program; only this reference is rendered by installation. |
+| `skills/project-cleanup/SKILL.md` | Sole quick-operation kernel, at most 50 body lines: reuse plan/scope/authority, literal manifest, one command, result checks and unknown-outcome rule. |
+| `references/tool_location.md` | Read only if the absolute README or intact installed binding has not already bound the root; installation renders only its marked location block. |
 | `references/disposal_evidence.md` | Positive disposal criteria and preservation rules. Read during default-plan discovery and uncertain classification. |
-| `references/bulk_cli.md` | Literal manifest/command contract and resource/retention controls. Read when composing a batch. |
-| `references/results_and_recovery.md` | Result fields, exit codes, yielded processes and partial/unknown completion. Read to complete a job or diagnose failure. |
+| `references/bulk_cli.md` | Extended grammar, resource/retention controls and optional PS5.1/7 caller evidence plumbing; no second happy-path recipe. |
+| `references/results_and_recovery.md` | Detailed result fields, filtered failure evidence and bounded read-only reconciliation; read for those needs, not every successful call. |
 | `references/exceptional_operations.md` | Overwrite recovery, independent downgrade grants and explicit process actions. Read only for those requested operations. |
 | `agents/openai.yaml` | Optional Codex UI display metadata generated with the official Skill Creator helper; not an authorization grant. |
 | `AGENTS.md` | Concise shared repository engineering contract: durable commands, conventions and invariants; links to detailed requirements and evidence. |
@@ -41,15 +41,33 @@ applicable repository instructions independently.
 
 ## Source and published runtime layouts
 
+Ordinary adoption obtains the official Release Windows x64 runtime ZIP, checks
+its SHA-256 against the same release record before extraction, and places the
+complete bundle in an Agent-selected portable directory. GitHub-generated
+source archives and cloning/building main/master are explicit engineering
+routes, never an automatic fallback for cleanup or a missing EXE. Inspect
+existing provenance/dirty state before replacement; prefer a separate portable
+location to modifying a checkout. No runtime/SDK/compiler/registration is
+required to use the native binary through the manual README entry.
+
+The canonical source Skill and all references are copied byte-for-byte into
+future runtime bundles. Only distribution-specific README/location/build
+routing may be rendered; a generated runtime entry links engineering and
+optional registration to a pinned source revision, not nonexistent bundled
+scripts. The operation kernel is never independently rewritten by packaging.
+Installed copies differ only in the existing marked location block plus their
+ownership receipt. Versioned v2 instructions become conditional only after the
+exact bound EXE advertises them; unadvertised/legacy artifacts keep v1.
+
 The complete seven-file Skill keeps the same relative layout in source and in
 `windows_agent_cleanup_v2.0.0_windows_x64.zip`. From its location reference,
 `../../..` resolves to the distribution root in either layout. The binary
-archive supplies `bin/secure_erase_cli.exe`, `bin/secure_erase_gui.exe`, two
-schemas, runtime README/AI entry files and engineering-routing stubs. It does
-not supply the source installer or build scripts. Direct file reading works
+archive supplies `bin/secure_erase_cli.exe`, `bin/secure_erase_gui.exe`, the
+schemas shipped with that version, runtime README/AI entry files and
+engineering-routing stubs. It does not supply the source installer or build scripts. Direct file reading works
 without registration. For optional registration, use
-`scripts/install_skill.ps1` from a source checkout and pass the actual source
-or binary distribution as `-ToolRoot`; the installer reads the complete Skill
+`scripts/install_skill.ps1` from an explicitly obtained source checkout and
+pass the actual source or binary distribution as `-ToolRoot`; the installer reads the complete Skill
 from that root and renders only its location binding. Example paths impose no
 drive or directory requirement: an Agent may choose a suitable writable local
 location for authorized setup. Existing bindings derive from the actual entry
@@ -74,8 +92,8 @@ manifests. The installer is product setup tooling, outside the Skill body.
 
 Use only portable `name` and `description` frontmatter rather than host-only
 permission flags, substitutions or dynamic shell injection. Default implicit
-Skill matching can start the workflow but cannot start deletion: plan/scope
-selection remains required unless already explicitly supplied. This permits
+Skill matching can start the workflow but cannot start deletion: plan/scope/authority
+selection remains required only where not already established. This permits
 arbitrary AI read-entry use and both native discovery systems without weakening
 user authorization or relying on a client-specific side-effect permission.
 
@@ -87,8 +105,8 @@ two-file thin entry. No installation modifies global agent instructions.
 
 ## Optional registration
 
-Registration is setup, not cleanup authorization. Direct reading works without
-it. Keep the complete tool distribution in the location the Agent selected;
+Registration is optional setup, not cleanup authorization. Direct reading works without
+it; ordinary binary adoption does not require a source checkout merely to register a Skill. Keep the complete tool distribution in the location the Agent selected;
 choose user-scope discovery for reuse or an explicit project-local destination
 for project scope. These client folders do not constrain the tool directory.
 

@@ -18,15 +18,18 @@ Windows Agent Cleanup removes large project cleanup batches through a native C++
 
 ## Start with your agent
 
-Extract the complete bundle to a suitable directory on the target Windows machine. The Agent may choose that directory according to available space, permissions and project or user scope; reuse an existing valid installation. No drive letter or parent directory is required. Then tell Codex, Claude Code, or another local agent to read the actual absolute path:
+For ordinary Agent setup, use the official **[Latest Release](https://github.com/bestkakkoii/windows_agent_cleanup/releases/latest)** runtime assets:
+
+1. Select the Windows x64 runtime ZIP and its matching `.sha256` asset from the same release record. GitHub's generated **Source code (zip/tar.gz)** downloads are engineering sources, not an installation package.
+2. Verify the ZIP's SHA-256 against that release's checksum **before extraction** (`Get-FileHash -LiteralPath <downloaded_zip> -Algorithm SHA256`). Stop on a mismatch or missing checksum; do not run or extract an unverified archive.
+3. Choose a suitable portable directory using available space, permissions and user/project scope. No drive or parent is prescribed. Reuse a valid installation; inspect provenance and dirty state before replacement, or use a separate portable directory rather than modifying a developer checkout.
+4. Extract the **complete** runtime bundle, then give the local Agent the actual absolute entry path:
 
 ```text
 Read <absolute path to the extracted tool>/README_AI.md
 ```
 
-The path above is a placeholder, not an installation requirement. The agent asks which cleanup plan to use and which project is in scope. After you choose, it identifies disposable material, submits a bulk manifest, and interprets a compact result. Reading the manual alone does not authorize deletion.
-
-The direct README route needs no MCP server, Skill installation, Python, Node.js, or model SDK. Optional [Agent Skills](skills/project-cleanup/SKILL.md) bundle the cleanup workflow, predefined plans and conditional protocol references. `README_AI.md` routes any agent to that shared workflow without requiring installation.
+The Agent reuses supplied scope, plan and authority; it asks only for missing choices. Ordinary adoption never clones/downloads `main`/`master` or compiles source, and never grants deletion permission. The direct route needs no MCP, compiler, SDK, Python, Node.js, global PATH change or Skill registration. The [shared Skill](skills/project-cleanup/SKILL.md) owns the operational kernel and loads extended references only when needed. Source development is a separate explicit [engineering route](CONTRIBUTING.md#build-from-source).
 
 ## Use the GUI
 

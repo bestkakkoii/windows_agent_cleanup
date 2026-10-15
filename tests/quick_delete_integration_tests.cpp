@@ -168,6 +168,10 @@ public:
                 target.identity = identity(attributes);
                 target.device_key = std::to_string(attributes.st_dev);
                 target.directory = S_ISDIR(attributes.st_mode);
+                target.type_known = true;
+                target.logical_size_known = attributes.st_size >= 0;
+                target.logical_size_bytes = target.directory || attributes.st_size < 0 ? 0 :
+                    static_cast<std::uint64_t>(attributes.st_size);
             }
             targets.push_back(std::move(target));
         }

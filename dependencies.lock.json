@@ -1,19 +1,19 @@
 {
   "schema": "secure_erase.dependencies.v2",
-  "recorded_at": "2026-10-15T11:47:53.541962+00:00",
+  "recorded_at": "2026-10-15T19:08:52.830822+00:00",
   "resolution_policy": "Immutable snapshots of upstream public default branches; explicitly refresh and revalidate this lock to update. No release-tag selection.",
   "tool_sources": [
     {
       "name": "cmake",
       "repository": "https://github.com/Kitware/CMake",
       "branch": "master",
-      "commit": "f6cee3879db644c193c2b8ddfd11d92a0ba763cb",
+      "commit": "6cf4bb4c834f9bae15c50da7d6f8893d96f0954c",
       "version_at_commit": "4.5.20261015",
       "role": "Hash-locked upstream default-branch source built into a private ignored cache by the bootstrap; exact source/tool identities are recorded.",
       "source_archive": {
-        "url": "https://codeload.github.com/Kitware/CMake/tar.gz/f6cee3879db644c193c2b8ddfd11d92a0ba763cb",
-        "sha256": "6d9e1fe47bdbb3c96236fa1d35c9957251681a4e96c58262a7e29a8134187625",
-        "size": 13890842
+        "url": "https://codeload.github.com/Kitware/CMake/tar.gz/6cf4bb4c834f9bae15c50da7d6f8893d96f0954c",
+        "sha256": "90abe27efc80e8a5415db682e5bc55b3e24b0d4d944a4699e6a7d08a716b9d72",
+        "size": 13905419
       }
     },
     {
@@ -35,18 +35,18 @@
       "name": "dear_imgui",
       "repository": "https://github.com/ocornut/imgui",
       "branch": "master",
-      "version_at_commit": "1.93.0",
-      "commit": "c1aaac65e896a45f81f47a4d68f9959e0f86c859",
+      "version_at_commit": "1.93.1 WIP",
+      "commit": "9d9a621f339460e8a9dc49b2ad164d6acade1aff",
       "license": "MIT",
-      "directory": "imgui/c1aaac65e896a45f81f47a4d68f9959e0f86c859",
+      "directory": "imgui/9d9a621f339460e8a9dc49b2ad164d6acade1aff",
       "source_encoding": "upstream_byte_identical",
       "retrieval": "Official immutable GitHub source archive, each required file verified against official Git tree blob SHA1 and locally computed SHA256.",
       "files": [
         {
           "path": "imgui.h",
-          "size": 444172,
-          "sha256": "314462301948fbd5673f5ead6f9a53acf54767cbee57e186e69f8f8b022c7094",
-          "git_blob_sha1": "df2d42675458f6b85b6a2491f8a4f6bb038ae52a"
+          "size": 444570,
+          "sha256": "1861addb0a31caa7b0510081d8bab899a92a0e8b07826127ad5ccf1e8a60a6ee",
+          "git_blob_sha1": "fdbcf80ba0ba41b8f2b3a8fe0f47e8da15ca19c0"
         },
         {
           "path": "imconfig.h",
@@ -56,9 +56,9 @@
         },
         {
           "path": "imgui_internal.h",
-          "size": 316603,
-          "sha256": "61bc50172d907cc931159cdce48fbff1db616cda33251c9c3469e316056939e6",
-          "git_blob_sha1": "420f070e8c7499a44e4ae5181fe2294eca98e6ad"
+          "size": 316711,
+          "sha256": "afbf51bba8cf2adf2a8a435e14f470a65536d04cfba851e1c1fbd20a0473ec94",
+          "git_blob_sha1": "875c51f4285c6a3c466e711e84e99762d74daf26"
         },
         {
           "path": "imstb_rectpack.h",
@@ -80,27 +80,27 @@
         },
         {
           "path": "imgui.cpp",
-          "size": 990920,
-          "sha256": "9542082a1eaeffcab7b3d8069e707839ce1714d167005e9f273ac9f656b415ed",
-          "git_blob_sha1": "3705e7262e6a9950f693f910d457927434eccd79"
+          "size": 992988,
+          "sha256": "63598185117d357d18009b24457032da351b27a43af949f4219a8d1d987e378d",
+          "git_blob_sha1": "a970e92ca843e65f450441cb3ba54d9cc7c8fd07"
         },
         {
           "path": "imgui_draw.cpp",
-          "size": 448538,
-          "sha256": "fff3bb04ca11e32041144e83a37b89ec92f4d5c62d681eb7ef29ee6cd7663e84",
-          "git_blob_sha1": "0d54ee8ad35400d8909482b1eb31604e7f88ca78"
+          "size": 448540,
+          "sha256": "f3770436e06e2e3db4c69dc917f358ff84f7a965011d25bd686f3f088cdeb817",
+          "git_blob_sha1": "f5ea3770025dfe2a6e30618f09bd882642d455ba"
         },
         {
           "path": "imgui_tables.cpp",
-          "size": 270796,
-          "sha256": "36635c1cf2ad1b7c88cdced456cceba3a1d02266d78a63d77e9cce92f4d48d61",
-          "git_blob_sha1": "a1757ed3f5305304ff62e6530e539deeb47a554f"
+          "size": 270800,
+          "sha256": "3b7d775ece6dc4a83756acd588d4f83c0ca885d420e524ebb90213e2783c25f8",
+          "git_blob_sha1": "ee208d16049ede0457788a1b1043fc0ddc9adc54"
         },
         {
           "path": "imgui_widgets.cpp",
-          "size": 563654,
-          "sha256": "d2d388f711688f6a5ce1ae3b30168c1bf4f954ead40235b0b2b9667452850c93",
-          "git_blob_sha1": "821b15f441053b4583a160de4c716a583d8b62c1"
+          "size": 563668,
+          "sha256": "86a862703da2debfde9d47c90bd1e5c856090148078a4be7b6f320863b54a8c6",
+          "git_blob_sha1": "4acdc0a6b9401632af5881f8037eeee4d2f76ab9"
         },
         {
           "path": "backends/imgui_impl_win32.h",
@@ -134,9 +134,9 @@
         }
       ],
       "source_archive": {
-        "url": "https://codeload.github.com/ocornut/imgui/tar.gz/c1aaac65e896a45f81f47a4d68f9959e0f86c859",
-        "sha256": "b3d8f99838bb3ff05e14185562345f85e00c032da4d8fc277608d7898d847114",
-        "size": 2191463
+        "url": "https://codeload.github.com/ocornut/imgui/tar.gz/9d9a621f339460e8a9dc49b2ad164d6acade1aff",
+        "sha256": "37018e51e2e7f6c4150505c5f280c03ccb4906375c35ac79da82e706ded28b70",
+        "size": 2193580
       }
     }
   ]

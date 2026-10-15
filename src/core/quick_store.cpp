@@ -7,7 +7,8 @@ namespace secure_erase::quick::store
 {
 namespace
 {
-constexpr std::uint64_t index_bytes = 144;
+constexpr std::uint64_t index_bytes = 152;
+constexpr std::size_t index_payload_bytes = 120;
 constexpr std::uint64_t outcome_bytes = 576;
 constexpr std::uint64_t absent_parent = std::numeric_limits<std::uint64_t>::max();
 
@@ -102,6 +103,9 @@ void append_text(std::vector<std::byte>& output, std::string_view value)
     return !value.path.empty() && value.path.size() <= 131072 &&
         value.identity.size() <= 1024 && value.device_key.size() <= 1024 &&
         value.preparation_error.code.size() <= 512 &&
+        (!value.logical_size_known || value.type_known) &&
+        (value.logical_size_known || value.logical_size_bytes == 0) &&
+        (!value.type_known || !value.directory || value.logical_size_bytes == 0) &&
         ((!value.identity.empty() && !value.device_key.empty()) || !value.preparation_error.code.empty()) &&
         valid_utf8(value.path) && valid_utf8(value.identity) && valid_utf8(value.device_key) &&
         valid_utf8(value.preparation_error.code) &&
@@ -115,6 +119,8 @@ void append_text(std::vector<std::byte>& output, std::string_view value)
         left.device_key == right.device_key && left.creation_time == right.creation_time &&
         left.attributes == right.attributes && left.directory == right.directory &&
         left.allocated_bytes == right.allocated_bytes &&
+        left.logical_size_bytes == right.logical_size_bytes &&
+        left.logical_size_known == right.logical_size_known && left.type_known == right.type_known &&
         left.preparation_error.code == right.preparation_error.code &&
         left.preparation_error.native_code == right.preparation_error.native_code &&
         left.preparation_error.device_fault == right.preparation_error.device_fault;
@@ -137,7 +143,7 @@ void append_text(std::vector<std::byte>& output, std::string_view value)
 [[nodiscard]] std::vector<std::byte> encode(const target& value)
 {
     std::vector<std::byte> bytes;
-    bytes.reserve(136 + value.path.size() + value.identity.size() + value.device_key.size() +
+    bytes.reserve(160 + value.path.size() + value.identity.size() + value.device_key.size() +
         value.preparation_error.code.size());
     append_integer(bytes, 0);
     append_text(bytes, value.path);
@@ -150,6 +156,9 @@ void append_text(std::vector<std::byte>& output, std::string_view value)
     append_integer(bytes, value.preparation_error.native_code);
     append_integer(bytes, value.preparation_error.device_fault);
     append_integer(bytes, value.allocated_bytes);
+    append_integer(bytes, value.logical_size_bytes);
+    append_integer(bytes, value.logical_size_known);
+    append_integer(bytes, value.type_known);
     put_integer(bytes, bytes.size() - 8);
     const auto digest = crypto::sha256(std::span(bytes).subspan(8));
     bytes.insert(bytes.end(), digest.begin(), digest.end());
@@ -195,13 +204,19 @@ void append_text(std::vector<std::byte>& output, std::string_view value)
     const auto native = integer();
     const auto device_fault = integer();
     result.allocated_bytes = integer();
+    result.logical_size_bytes = integer();
+    const auto logical_size_known = integer();
+    const auto type_known = integer();
     if (!good || position != bytes.size() || attributes > std::numeric_limits<std::uint32_t>::max() ||
-        native > std::numeric_limits<std::uint32_t>::max() || directory > 1 || device_fault > 1)
+        native > std::numeric_limits<std::uint32_t>::max() || directory > 1 || device_fault > 1 ||
+        logical_size_known > 1 || type_known > 1)
     {
         return std::unexpected(failure("quick_store_record_invalid"));
     }
     result.attributes = static_cast<std::uint32_t>(attributes);
     result.directory = directory != 0;
+    result.logical_size_known = logical_size_known != 0;
+    result.type_known = type_known != 0;
     result.preparation_error.native_code = static_cast<std::uint32_t>(native);
     result.preparation_error.device_fault = device_fault != 0;
     if (!valid_target(result))
@@ -355,7 +370,7 @@ struct read_record
 [[nodiscard]] crypto::digest initial_digest(std::string_view job_id)
 {
     std::vector<std::byte> bytes;
-    append_text(bytes, "secure_erase.quick_store.v1");
+    append_text(bytes, "secure_erase.quick_store.v2");
     append_text(bytes, job_id);
     return crypto::sha256(bytes);
 }
@@ -426,6 +441,9 @@ public:
                     namespace_digest(decoded->value) != target_metadata.namespace_digest ||
                     (position != 0 && previous_path >= decoded->value.path) ||
                     target_metadata.allocated_bytes != decoded->value.allocated_bytes ||
+                    target_metadata.logical_size_bytes != decoded->value.logical_size_bytes ||
+                    target_metadata.logical_size_known != decoded->value.logical_size_known ||
+                    target_metadata.type_known != decoded->value.type_known ||
                     target_metadata.directory != decoded->value.directory ||
                     target_metadata.preparation_failed != !decoded->value.preparation_error.code.empty() ||
                     (target_metadata.parent != absent_parent && target_metadata.parent >= position) ||
@@ -447,7 +465,7 @@ public:
                 }
                 next = decoded->next;
                 previous_path = std::move(decoded->value.path);
-                digest = chain_digest(digest, std::span(*encoded_index).first(112));
+                digest = chain_digest(digest, std::span(*encoded_index).first(index_payload_bytes));
             }
             if (next != records->bytes || finish_digest(digest, metadata.target_count) != metadata.fingerprint)
             {
@@ -530,7 +548,7 @@ public:
         if (!begun_ || finished_ || position >= metadata.target_count || value.code.empty() ||
             value.code.size() > 512 || !valid_utf8(value.code) || value.logical_overwrite_verified ||
             value.physical_sanitization_guaranteed || value.written_bytes != 0 || value.verified_bytes != 0 ||
-            (value.deleted && (value.code != "deleted_quick_namespace_removed" || value.native_code != 0)) ||
+            (value.deleted && (!value.remove_attempted || value.code != "deleted_quick_namespace_removed" || value.native_code != 0)) ||
             (!value.deleted && value.code == "deleted_quick_namespace_removed"))
         {
             return std::unexpected(failure("quick_store_outcome_invalid"));
@@ -541,14 +559,15 @@ public:
             return std::unexpected(indexed.error());
         }
         if (!hex_equals(indexed->namespace_digest, value.identity) ||
-            (value.deleted && indexed->preparation_failed))
+            (value.remove_attempted && indexed->preparation_failed))
         {
             return std::unexpected(failure("quick_store_outcome_identity_invalid"));
         }
         std::array<std::byte, outcome_bytes> bytes{};
-        put_integer(bytes, 1);
+        put_integer(bytes, 2);
         put_integer(std::span(bytes).subspan(8), value.code.size());
-        put_integer(std::span(bytes).subspan(16), value.deleted);
+        put_integer(std::span(bytes).subspan(16), static_cast<std::uint64_t>(value.deleted) |
+            (static_cast<std::uint64_t>(value.remove_attempted) << 1));
         put_integer(std::span(bytes).subspan(24), value.native_code);
         const auto code = std::as_bytes(std::span(value.code.data(), value.code.size()));
         std::copy(code.begin(), code.end(), bytes.begin() + 32);
@@ -594,20 +613,21 @@ public:
             return value;
         }
         const auto length = get_integer(std::span(bytes).subspan(8));
-        const auto deleted = get_integer(std::span(bytes).subspan(16));
+        const auto flags = get_integer(std::span(bytes).subspan(16));
         const auto native = get_integer(std::span(bytes).subspan(24));
         const auto digest = outcome_digest(indexed->namespace_digest, position, std::span(bytes).first(544));
-        if (get_integer(bytes) != 1 || length == 0 || length > 512 || deleted > 1 ||
+        if (get_integer(bytes) != 2 || length == 0 || length > 512 || flags > 3 ||
             native > std::numeric_limits<std::uint32_t>::max() ||
             !std::equal(digest.begin(), digest.end(), bytes.begin() + 544))
         {
             return std::unexpected(failure("quick_store_outcome_integrity_failed"));
         }
         value.code.assign(reinterpret_cast<const char*>(bytes.data() + 32), static_cast<std::size_t>(length));
-        value.deleted = deleted != 0;
+        value.deleted = (flags & 1) != 0;
+        value.remove_attempted = (flags & 2) != 0;
         value.native_code = static_cast<std::uint32_t>(native);
-        if (!valid_utf8(value.code) ||
-            (value.deleted && (value.code != "deleted_quick_namespace_removed" || value.native_code != 0)) ||
+        if (!valid_utf8(value.code) || (value.remove_attempted && indexed->preparation_failed) ||
+            (value.deleted && (!value.remove_attempted || value.code != "deleted_quick_namespace_removed" || value.native_code != 0)) ||
             (!value.deleted && value.code == "deleted_quick_namespace_removed"))
         {
             return std::unexpected(failure("quick_store_outcome_invalid"));
@@ -650,9 +670,9 @@ private:
         {
             return std::unexpected(read.error());
         }
-        const auto digest = crypto::sha256(std::span(bytes).first(112));
-        if (!std::equal(digest.begin(), digest.end(), bytes.begin() + 112) ||
-            get_integer(std::span(bytes).subspan(40)) > 3 ||
+        const auto digest = crypto::sha256(std::span(bytes).first(index_payload_bytes));
+        if (!std::equal(digest.begin(), digest.end(), bytes.begin() + index_payload_bytes) ||
+            get_integer(std::span(bytes).subspan(40)) > 15 ||
             get_integer(std::span(bytes).subspan(32)) > std::numeric_limits<std::uint32_t>::max())
         {
             return std::unexpected(failure("quick_store_index_integrity_failed"));
@@ -669,6 +689,9 @@ private:
         const auto flags = get_integer(bytes.subspan(40));
         value.directory = (flags & 1) != 0;
         value.preparation_failed = (flags & 2) != 0;
+        value.logical_size_known = (flags & 4) != 0;
+        value.type_known = (flags & 8) != 0;
+        value.logical_size_bytes = get_integer(bytes.subspan(112));
         std::copy_n(bytes.begin() + 48, 32, value.namespace_digest.begin());
         return value;
     }
@@ -1097,18 +1120,21 @@ struct staging_store::implementation
             }
             put_integer(std::span(bytes).subspan(32), device);
             put_integer(std::span(bytes).subspan(40), static_cast<std::uint64_t>(current->value.directory) |
-                (static_cast<std::uint64_t>(!current->value.preparation_error.code.empty()) << 1));
+                (static_cast<std::uint64_t>(!current->value.preparation_error.code.empty()) << 1) |
+                (static_cast<std::uint64_t>(current->value.logical_size_known) << 2) |
+                (static_cast<std::uint64_t>(current->value.type_known) << 3));
+            put_integer(std::span(bytes).subspan(112), current->value.logical_size_bytes);
             const auto name_digest = namespace_digest(current->value);
             std::copy(name_digest.begin(), name_digest.end(), bytes.begin() + 48);
             std::copy(current->digest.begin(), current->digest.end(), bytes.begin() + 80);
-            const auto hash = crypto::sha256(std::span(bytes).first(112));
-            std::copy(hash.begin(), hash.end(), bytes.begin() + 112);
+            const auto hash = crypto::sha256(std::span(bytes).first(index_payload_bytes));
+            std::copy(hash.begin(), hash.end(), bytes.begin() + index_payload_bytes);
             auto written = frozen->indexes->file->write_at(position * index_bytes, bytes);
             if (!written)
             {
                 return std::unexpected(written.error());
             }
-            digest = chain_digest(digest, std::span(bytes).first(112));
+            digest = chain_digest(digest, std::span(bytes).first(index_payload_bytes));
             frozen->metadata.maximum_target_bytes = std::max(frozen->metadata.maximum_target_bytes,
                 4 * current->payload_bytes + 4 * sizeof(target) + 1024);
             const auto depth = static_cast<std::uint64_t>(std::count_if(current->value.path.begin(),

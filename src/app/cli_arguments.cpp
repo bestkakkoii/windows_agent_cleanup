@@ -22,6 +22,27 @@ namespace secure_erase::cli
         }
     }
 
+    std::uint32_t requested_contract_version(std::span<const std::string> tokens) noexcept
+    {
+        for (std::size_t index = 1; index < tokens.size(); ++index)
+        {
+            const auto& key = tokens[index];
+            if (key == "--authorize-irreversible" || key == "--authorize-close" || key == "--authorize-force")
+            {
+                continue;
+            }
+            if (++index == tokens.size())
+            {
+                break;
+            }
+            if (key == "--contract-version" && tokens[index] == "2")
+            {
+                return 2;
+            }
+        }
+        return 1;
+    }
+
     engine::result<arguments> parse(std::span<const std::string> tokens)
     {
         arguments result;
@@ -34,7 +55,7 @@ namespace secure_erase::cli
         {
             result.command = "capabilities";
         }
-        const std::set<std::string_view> commands{"capabilities", "scan", "run", "resume", "locks", "release"};
+        const std::set<std::string_view> commands{"capabilities", "scan", "run", "resume", "locks", "release", "status"};
         if (!commands.contains(result.command))
         {
             return std::unexpected(engine::error{"unknown_command"});
@@ -67,7 +88,15 @@ namespace secure_erase::cli
                 return std::unexpected(engine::error{"option_value_required"});
             }
             const auto& value = tokens[index];
-            if (key == "--mode")
+            if (key == "--contract-version")
+            {
+                if (!number(value, result.contract_version) ||
+                    (result.contract_version != 1 && result.contract_version != 2))
+                {
+                    return std::unexpected(engine::error{"unsupported_contract_version"});
+                }
+            }
+            else if (key == "--mode")
             {
                 result.mode = value;
             }
@@ -138,18 +167,32 @@ namespace secure_erase::cli
         }
         if (result.command == "capabilities")
         {
-            if (!seen.empty())
+            if (seen.size() > (seen.contains("--contract-version") ? 1U : 0U))
             {
                 return std::unexpected(engine::error{"capabilities_takes_no_options"});
             }
             return result;
         }
-        if (result.request_id.empty() || result.request_id.size() > 128 ||
-            !std::ranges::all_of(result.request_id, [](char value)
+        const bool valid_request = !result.request_id.empty() && result.request_id.size() <= 128 &&
+            std::ranges::all_of(result.request_id, [](char value)
             {
                 return (value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z') ||
                     (value >= '0' && value <= '9') || value == '_' || value == '-';
-            }) || result.root.empty() || result.report_directory.empty())
+            });
+        if (result.command == "status")
+        {
+            if (result.contract_version != 2 || !valid_request || result.report_directory.empty())
+            {
+                return std::unexpected(engine::error{"status_request_report_v2_required"});
+            }
+            const std::set<std::string_view> allowed{"--contract-version", "--request-id", "--report-dir"};
+            if (std::ranges::any_of(seen, [&](std::string_view key) { return !allowed.contains(key); }))
+            {
+                return std::unexpected(engine::error{"status_execution_options_forbidden"});
+            }
+            return result;
+        }
+        if (!valid_request || result.root.empty() || result.report_directory.empty())
         {
             return std::unexpected(engine::error{"request_scope_report_required"});
         }

@@ -6,7 +6,32 @@ export namespace secure_erase::metadata
 {
     [[nodiscard]] constexpr const char* version() noexcept
     {
-        return "2.0.0-dev.1";
+        return SECURE_ERASE_APPLICATION_VERSION;
+    }
+
+    [[nodiscard]] constexpr const char* source_commit() noexcept
+    {
+        return SECURE_ERASE_SOURCE_COMMIT;
+    }
+
+    [[nodiscard]] constexpr bool source_commit_known() noexcept
+    {
+        return SECURE_ERASE_SOURCE_COMMIT_KNOWN != 0;
+    }
+
+    [[nodiscard]] constexpr bool source_dirty() noexcept
+    {
+        return SECURE_ERASE_SOURCE_DIRTY != 0;
+    }
+
+    [[nodiscard]] constexpr bool source_dirty_known() noexcept
+    {
+        return SECURE_ERASE_SOURCE_DIRTY_KNOWN != 0;
+    }
+
+    [[nodiscard]] constexpr const char* build_identity() noexcept
+    {
+        return SECURE_ERASE_BUILD_IDENTITY;
     }
 
     [[nodiscard]] constexpr const char* product_name() noexcept

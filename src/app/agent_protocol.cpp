@@ -396,4 +396,63 @@ namespace secure_erase::agent
         result.push_back('"');
         return result;
     }
+    std::string_view next_action_name(next_action_kind value) noexcept
+    {
+        switch (value)
+        {
+        case next_action_kind::none:
+            return "none";
+        case next_action_kind::use_supported_host:
+            return "use_supported_host";
+        case next_action_kind::request_os_consent:
+            return "request_os_consent";
+        case next_action_kind::correct_input:
+            return "correct_input";
+        case next_action_kind::inspect_report:
+            return "inspect_report";
+        case next_action_kind::wait_same_invocation:
+            return "wait_same_invocation";
+        case next_action_kind::reconcile_unknown:
+            return "reconcile_unknown";
+        }
+        return "reconcile_unknown";
+    }
+
+    std::string action_guidance_json(const action_guidance& value)
+    {
+        // CONTRACT: Reasons are bounded identifiers, never executable commands.
+        return "\"next_action\":{\"action\":" + json_quote(next_action_name(value.action)) +
+            ",\"reason\":" + json_quote(std::string_view(value.reason).substr(0, 128)) +
+            "},\"retry_safe\":" + (value.retry_safe ? "true" : "false");
+    }
+
+    std::string statistics_json(const engine::operation_statistics& value)
+    {
+        if (!value.supported)
+        {
+            return "null";
+        }
+        const auto counts = [](const engine::namespace_statistics& count)
+        {
+            return "{\"files\":" + std::to_string(count.files) + ",\"directories\":" +
+                std::to_string(count.directories) + ",\"unclassified\":" + std::to_string(count.unclassified) + "}";
+        };
+        const auto& bytes = value.logical_bytes;
+        const auto& failures = value.final_failures;
+        return "{\"selected\":" + counts(value.selected) + ",\"remove_attempted\":" + counts(value.remove_attempted) +
+            ",\"completed\":" + counts(value.completed) +
+            ",\"logical_bytes_semantics\":\"frozen_default_stream_snapshot\",\"logical_bytes\":{\"selected\":" +
+            std::to_string(bytes.selected) + ",\"remove_attempted\":" + std::to_string(bytes.remove_attempted) +
+            ",\"completed\":" + std::to_string(bytes.completed) + ",\"selected_unknown\":" +
+            std::to_string(bytes.selected_unknown) + ",\"remove_attempted_unknown\":" +
+            std::to_string(bytes.remove_attempted_unknown) + ",\"completed_unknown\":" +
+            std::to_string(bytes.completed_unknown) + "},\"failed\":" + std::to_string(value.failed) +
+            ",\"pending\":" + std::to_string(value.pending) + ",\"final_failures\":{\"scope_protection\":" +
+            std::to_string(failures.scope_protection) + ",\"reparse\":" + std::to_string(failures.reparse) +
+            ",\"identity\":" + std::to_string(failures.identity) + ",\"access_lock\":" +
+            std::to_string(failures.access_lock) + ",\"resource\":" + std::to_string(failures.resource) +
+            ",\"report_audit\":" + std::to_string(failures.report_audit) + ",\"other\":" +
+            std::to_string(failures.other) + "}}";
+    }
+
 }

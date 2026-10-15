@@ -62,6 +62,7 @@ export namespace secure_erase::frontend
         std::size_t quick_total{};
         std::size_t quick_attempted{};
         std::size_t quick_pending{};
+        engine::operation_statistics quick_statistics;
         std::string status{"ready"};
         std::string operation_phase{"ready"};
         std::string diagnostic_job_id;

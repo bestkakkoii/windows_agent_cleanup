@@ -71,3 +71,82 @@ published state and the repository's Releases sidebar after an authorized releas
 
 References: [GitHub release API](https://docs.github.com/en/rest/releases/releases),
 [Windows acceptance plan](windows_test_plan.md), [project contract](../spec/project.json).
+
+## Future portable runtime assembly
+
+Ordinary operator setup downloads an authorized Release's Windows x64 runtime
+asset and checks its release-record SHA-256 before extraction. It does not clone
+main/master, fetch GitHub-generated Source code archives, or invoke a compiler.
+Keep a developer checkout separate from a portable program installation.
+
+Engineering-only `scripts/package_runtime.py` owns future runtime archives;
+`scripts/package.py` and `scripts/verify_package.py` retain their distinct,
+unpublished source/evidence contract. Neither packager publishes or upgrades an
+existing Release. The old v2.0.0 owner binaries and historical provenance are
+unchanged; future-only PE/capability checks do not retroactively attest them.
+
+From a clean committed checkout with the locked ImGui license restored, supply
+explicit approved executable paths and a BOM-free provenance JSON file outside
+Git. Its minimal shape is:
+
+```json
+{
+  "schema": "windows_agent_cleanup.runtime_inputs.v1",
+  "distribution_version": "2.0.0-dev.1",
+  "approved_binary_sha256": {
+    "bin/secure_erase_cli.exe": "<exact CLI SHA-256>",
+    "bin/secure_erase_gui.exe": "<exact GUI SHA-256>"
+  },
+  "capabilities_capture": {
+    "cli_sha256": "<same exact CLI SHA-256>",
+    "result": "<replace with the unchanged object from capabilities --contract-version 2>"
+  }
+}
+```
+
+The `result` placeholder is an object in real input. Capture capabilities only
+from the exact selected executable; packaging reads data and never executes an
+input EXE. An input approval hash identifies reviewed bytes and grants no
+publication authority. Do not invent a matching capability capture for legacy
+binaries or substitute distribution version for their actual product version.
+
+```text
+python scripts/package_runtime.py --output <new external runtime.zip> --cli <approved CLI.exe> --gui <approved GUI.exe> --provenance <external runtime_inputs.json>
+python scripts/package_runtime.py --verify <runtime.zip> --expected-sha256 <independently trusted archive SHA-256>
+```
+
+The packager checks both x64 PE VERSIONINFO resources, consistent actual
+application/numeric versions and build identity, OriginalFilename, exact input
+hashes, and captured v2 capabilities. It copies executable bytes unchanged,
+the canonical complete Skill/references, operational schemas, licenses and
+NOTICE. Only distribution README/engineering URLs are rendered; the Skill and
+its references retain canonical bytes. README engineering and optional
+registration URLs are pinned to the exact distribution source commit.
+
+`release_manifest.json` binds every member's size/hash and
+`supported_contract_versions` to the exact CLI SHA-256. Distribution source
+commit, reported runtime source/dirty/build identity and actual PE version stay
+separate. Unknown source identity stays unknown. These consistency checks are
+not an independently authenticated or reproducible source-to-binary attestation.
+The external manifest owns executable hashes; no self hash is embedded in an EXE.
+
+Sorted entries, fixed timestamps/permissions and uncompressed ZIP storage avoid
+compressor-version drift: identical canonical inputs and provenance produce
+identical archive bytes. Archive and checksum destinations must be new and
+outside the repository. Integrity verification never extracts or executes
+members; operator trust still requires the independently obtained Release hash.
+
+CI exercises synthetic archive-format fixtures and may assemble a non-published
+runtime test artifact from that run's compiled EXEs/capabilities. Its
+`publication_allowed=false` means no RC/Release authority, owner acceptance or
+complete platform/hardware coverage. A runtime ZIP contains no application
+source, build scripts, Python, tests, debugging symbols or developer dependencies.
+
+PE/resource definitions follow Microsoft's
+[PE format](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format) and
+[VERSIONINFO resource](https://learn.microsoft.com/en-us/windows/win32/menurc/versioninfo-resource)
+contracts, checked on 2026-10-16 (Asia/Taipei). CMake captures source identity at
+configuration: reconfigure after source changes before attributing a build to
+that source state. The PE numeric assembly/file version `2.0.0.1` identifies the
+current application development build; the string remains `2.0.0-dev.1`.
+CLI `asInvoker` and GUI administrator behavior remain separate and unchanged.

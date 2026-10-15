@@ -13,6 +13,7 @@ import secure_erase.state_store;
 import secure_erase.codec;
 import secure_erase.plan;
 import secure_erase.quick_store;
+import secure_erase.agent_protocol;
 
 namespace
 {
@@ -262,6 +263,201 @@ namespace
             &original, sizeof(original), nullptr, 0, &received, nullptr) != FALSE);
     }
 
+    std::string fixture_utf8(std::wstring_view value)
+    {
+        const auto count = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, value.data(),
+            static_cast<int>(value.size()), nullptr, 0, nullptr, nullptr);
+        if (count <= 0)
+        {
+            return {};
+        }
+        std::string text(static_cast<std::size_t>(count), '\0');
+        if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, value.data(),
+            static_cast<int>(value.size()), text.data(), count, nullptr, nullptr) != count)
+        {
+            return {};
+        }
+        return text;
+    }
+
+    unique_handle create_report_fixture(std::wstring_view root, std::wstring_view path)
+    {
+        const std::wstring owned_root(root);
+        DWORD required{};
+        GetFileSecurityW(owned_root.c_str(), OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
+            nullptr, 0, &required);
+        if (required == 0 || required > 65536)
+        {
+            return {};
+        }
+        std::vector<std::byte> descriptor(required);
+        if (!GetFileSecurityW(owned_root.c_str(), OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
+            descriptor.data(), required, &required))
+        {
+            return {};
+        }
+        SECURITY_ATTRIBUTES security{sizeof(SECURITY_ATTRIBUTES), descriptor.data(), FALSE};
+        const std::wstring owned_path(path);
+        unique_handle file(CreateFileW(owned_path.c_str(), GENERIC_WRITE, FILE_SHARE_READ,
+            &security, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT, nullptr));
+        return file;
+    }
+
+    bool append_report_fixture(HANDLE file, std::string_view text)
+    {
+        if (file == nullptr || file == INVALID_HANDLE_VALUE || text.size() > 1024 * 1024)
+        {
+            return false;
+        }
+        DWORD written{};
+        return WriteFile(file, text.data(), static_cast<DWORD>(text.size()), &written, nullptr)
+            && written == text.size() && FlushFileBuffers(file);
+    }
+
+    void request_status_fixtures(test_suite& tests, secure_erase::storage::state_store& store)
+    {
+        using namespace secure_erase;
+        using lookup = storage::request_lookup_state;
+        const auto root = store.root_path();
+        const auto missing = root + L"_missing";
+        const auto absent = storage::state_store::inspect_request(missing, "status_fixture");
+        tests.check("status_missing_root_unavailable_without_creation", absent.lookup_state == lookup::unavailable
+            && GetFileAttributesW(missing.c_str()) == INVALID_FILE_ATTRIBUTES);
+        const auto empty = storage::state_store::inspect_request(root, "status_fixture");
+        tests.check("status_empty_lookup_coexists_with_live_store_lock", empty.lookup_state == lookup::no_record_observed
+            && empty.report_references.empty() && !empty.original_result);
+        const auto invalid = storage::state_store::inspect_request(root, "../escape");
+        tests.check("status_request_identifier_validated_before_access", invalid.lookup_state == lookup::unavailable
+            && invalid.observation_error.code == "status_invalid_request_id");
+        const auto path = root + L"\\status_fixture.0123456789abcdef0123456789abcdef.report.jsonl";
+        const auto second_path = root + L"\\status_fixture.fedcba9876543210fedcba9876543210.report.jsonl";
+        const auto intent = std::string{"{\"schema\":\"windows_agent_cleanup.intent.v1\",\"request_id\":\"status_fixture\","
+            "\"command\":\"run\",\"mode\":\"quick\",\"root\":\"C:\\\\never_access_this_path\","
+            "\"job_id\":\"0123456789abcdef0123456789abcdef\",\"plan_fingerprint\":\"frozen_fixture\","
+            "\"targets\":1,\"irreversible_authorized\":true}\n"};
+        const auto final = std::string{"{\"schema\":\"windows_agent_cleanup.result.v1\",\"request_id\":\"status_fixture\","
+            "\"job_id\":\"0123456789abcdef0123456789abcdef\",\"plan_fingerprint\":\"frozen_fixture\","
+            "\"mode\":\"quick\",\"status\":\"completed\",\"counts\":{\"targets\":1,\"completed\":1,\"failed\":0,\"pending\":0},"
+            "\"error_code\":\"\",\"native_code\":0,\"report_file\":"}
+            + agent::json_quote(fixture_utf8(path)) + ",\"resumable\":false,\"advisory\":false}";
+        const auto created = store.create_report_handle("status_fixture.0123456789abcdef0123456789abcdef.report.jsonl");
+        unique_handle writer(created ? reinterpret_cast<HANDLE>(*created) : nullptr);
+        tests.check("status_factory_rejects_unowned_names", !store.create_report_handle("../escape.report.jsonl")
+            && !store.create_report_handle("status_fixture.wrong.report.jsonl"));
+        const auto duplicate_factory = store.create_report_handle("status_fixture.0123456789abcdef0123456789abcdef.report.jsonl");
+        tests.check("status_factory_create_new_never_replaces", !duplicate_factory
+            && duplicate_factory.error().code == "report_create_failed");
+        if (duplicate_factory)
+        {
+            CloseHandle(reinterpret_cast<HANDLE>(*duplicate_factory));
+        }
+        tests.check("status_private_report_fixture_created", writer && writer.get() != INVALID_HANDLE_VALUE);
+        if (!writer || writer.get() == INVALID_HANDLE_VALUE)
+        {
+            return;
+        }
+        tests.check("status_fixture_intent_written", append_report_fixture(writer.get(), intent));
+        const auto pending = storage::state_store::inspect_request(root, "status_fixture");
+        tests.check("status_flushed_intent_is_not_completion", pending.lookup_state == lookup::intent_only
+            && !pending.original_result && pending.report_references.size() == 1);
+        tests.check("status_fixture_final_written", append_report_fixture(writer.get(), final + "\n"));
+        const auto terminal = storage::state_store::inspect_request(root, "status_fixture");
+        tests.check("status_final_preserves_exact_original_result", terminal.lookup_state == lookup::terminal_result
+            && terminal.original_result && *terminal.original_result == final
+            && terminal.report_references.size() == 1);
+        LARGE_INTEGER length{};
+        tests.check("status_never_changes_report_bytes", GetFileSizeEx(writer.get(), &length)
+            && length.QuadPart == static_cast<LONGLONG>(intent.size() + final.size() + 1));
+        auto second_writer = create_report_fixture(root, second_path);
+        tests.check("status_duplicate_request_fixture_created", second_writer && second_writer.get() != INVALID_HANDLE_VALUE);
+        second_writer.reset();
+        const auto ambiguous = storage::state_store::inspect_request(root, "status_fixture");
+        tests.check("status_multiple_matching_reports_are_ambiguous", ambiguous.lookup_state == lookup::ambiguous
+            && ambiguous.report_references.size() == 2 && !ambiguous.original_result);
+        tests.check("status_duplicate_fixture_removed", DeleteFileW(second_path.c_str()) != FALSE);
+        writer.reset();
+        writer = create_report_fixture(root, path);
+        tests.check("status_partial_fixture_written", append_report_fixture(writer.get(), intent + "{\"schema\":"));
+        const auto partial = storage::state_store::inspect_request(root, "status_fixture");
+        tests.check("status_partial_final_stays_unknown", partial.lookup_state == lookup::inspection_incomplete
+            && partial.observation_error.code == "status_partial_final_record" && !partial.original_result);
+        writer.reset();
+        writer = create_report_fixture(root, path);
+        auto mismatched = final;
+        const auto binding = mismatched.find("\"frozen_fixture\"");
+        mismatched.replace(binding, std::string_view("\"frozen_fixture\"").size(), "\"different_fixture\"");
+        tests.check("status_mismatch_fixture_written", append_report_fixture(writer.get(), intent + mismatched + "\n"));
+        const auto mismatch = storage::state_store::inspect_request(root, "status_fixture");
+        tests.check("status_intent_final_binding_mismatch_rejected", mismatch.lookup_state == lookup::inspection_incomplete
+            && mismatch.observation_error.code == "status_final_result_binding_invalid");
+        writer.reset();
+        writer = create_report_fixture(root, path);
+        auto duplicate = final;
+        duplicate.insert(1, "\"request_id\":\"status_fixture\",");
+        tests.check("status_duplicate_key_fixture_written", append_report_fixture(writer.get(), intent + duplicate + "\n"));
+        const auto invalid_json = storage::state_store::inspect_request(root, "status_fixture");
+        tests.check("status_duplicate_json_keys_rejected", invalid_json.lookup_state == lookup::inspection_incomplete
+            && invalid_json.observation_error.code == "status_invalid_evidence_record");
+        writer.reset();
+        writer = create_report_fixture(root, path);
+        tests.check("status_oversized_fixture_written", append_report_fixture(writer.get(), std::string(512 * 1024 + 1, 'x')));
+        const auto limited = storage::state_store::inspect_request(root, "status_fixture");
+        tests.check("status_record_byte_bound_discloses_incomplete", limited.lookup_state == lookup::inspection_incomplete
+            && limited.observation_error.code == "status_first_record_incomplete_or_limit");
+        writer.reset();
+        writer = create_report_fixture(root, path);
+        tests.check("status_hardlink_fixture_written", append_report_fixture(writer.get(), intent + final + "\n"));
+        writer.reset();
+        const auto alias = root + L"\\status_hardlink_alias.bin";
+        if (CreateHardLinkW(alias.c_str(), path.c_str(), nullptr))
+        {
+            const auto linked = storage::state_store::inspect_request(root, "status_fixture");
+            tests.check("status_hardlinked_report_refused", linked.lookup_state == lookup::unavailable
+                && linked.observation_error.code == "state_unsafe_object");
+            tests.check("status_hardlink_fixture_removed", DeleteFileW(alias.c_str()) != FALSE);
+        }
+        else
+        {
+            std::cout << "{\"test\":\"status_hardlink_regression\",\"status\":\"not_run\",\"native_error\":"
+                << GetLastError() << "}\n";
+        }
+        writer = create_report_fixture(root, path);
+        auto version_two = final;
+        const auto schema_version = version_two.find("windows_agent_cleanup.result.v1");
+        version_two.replace(schema_version, std::string_view("windows_agent_cleanup.result.v1").size(),
+            "windows_agent_cleanup.result.v2");
+        version_two.pop_back();
+        version_two += ",\"readiness\":null,\"statistics\":null,\"phases_ms\":{"
+            "\"manifest_preparation_ms\":null,\"freeze_ms\":null,\"first_pass_ms\":null,\"recovery_ms\":null,"
+            "\"reporting_before_result_ms\":null,\"total_to_result_ms\":1.25},\"space_observations\":null,"
+            "\"next_action\":{\"action\":\"none\",\"reason\":\"recorded\"},\"retry_safe\":false}";
+        tests.check("status_v2_fixture_written", append_report_fixture(writer.get(), intent + version_two + "\n"));
+        const auto terminal_v2 = storage::state_store::inspect_request(root, "status_fixture");
+        tests.check("status_v2_final_retains_original_contract", terminal_v2.lookup_state == lookup::terminal_result
+            && terminal_v2.original_result && *terminal_v2.original_result == version_two);
+        writer.reset();
+        writer = create_report_fixture(root, path);
+        auto running = final;
+        const auto final_status = running.find("\"completed\"");
+        running.replace(final_status, std::string_view("\"completed\"").size(), "\"running\"");
+        tests.check("status_nonterminal_schema_fixture_written", append_report_fixture(writer.get(), intent + running + "\n"));
+        const auto nonterminal = storage::state_store::inspect_request(root, "status_fixture");
+        tests.check("status_result_schema_alone_does_not_prove_terminal", nonterminal.lookup_state == lookup::inspection_incomplete
+            && nonterminal.observation_error.code == "status_final_result_binding_invalid");
+        writer.reset();
+        writer = create_report_fixture(root, path);
+        auto count_mismatch_intent = intent;
+        const auto intent_count = count_mismatch_intent.find("\"targets\":1");
+        count_mismatch_intent.replace(intent_count, std::string_view("\"targets\":1").size(), "\"targets\":2");
+        tests.check("status_count_binding_fixture_written", append_report_fixture(writer.get(), count_mismatch_intent + final + "\n"));
+        const auto count_mismatch = storage::state_store::inspect_request(root, "status_fixture");
+        tests.check("status_frozen_intent_target_count_is_bound", count_mismatch.lookup_state == lookup::inspection_incomplete
+            && count_mismatch.observation_error.code == "status_final_result_binding_invalid");
+        writer.reset();
+        tests.check("status_report_fixture_removed", DeleteFileW(path.c_str()) != FALSE);
+        tests.check("status_inspection_never_takes_or_breaks_store_writer_lock", !storage::state_store::open_at(root));
+    }
+
     // SECURITY: Only removes direct children of a random directory created by this test.
     // Never follows reparses or recursively descends; any unexpected directory fails cleanup.
     bool cleanup_test_root(std::wstring_view root)
@@ -383,6 +579,12 @@ int wmain(int argc, wchar_t** argv)
     const auto alias = root + L"_reparse";
     if (CreateSymbolicLinkW(alias.c_str(), root.c_str(), SYMBOLIC_LINK_FLAG_DIRECTORY))
     {
+        const auto observed_alias = storage::state_store::inspect_request(alias, "status_fixture");
+        tests.check("status_reparse_root_rejected_read_only", observed_alias.lookup_state
+            == storage::request_lookup_state::unavailable && observed_alias.observation_error.code == "state_unsafe_object");
+        const auto observed_ancestor = storage::state_store::inspect_request(alias + L"\\never_create", "status_fixture");
+        tests.check("status_reparse_ancestor_rejected_without_creation", observed_ancestor.lookup_state
+            == storage::request_lookup_state::unavailable && observed_ancestor.observation_error.code == "state_unsafe_object");
         const auto refused_leaf = storage::state_store::open_at(alias);
         tests.check("reparse_store_leaf_rejected", !refused_leaf
             && refused_leaf.error().code == "state_unsafe_object");
@@ -399,6 +601,7 @@ int wmain(int argc, wchar_t** argv)
         std::cout << "{\"test\":\"state_reparse_regression\",\"status\":\"not_run\","
             "\"native_error\":" << GetLastError() << "}\n";
     }
+    request_status_fixtures(tests, *store);
     tests.check("same_process_lock_exclusion", !storage::state_store::open_at(root));
     tests.check("cross_process_lock_exclusion", child_lock_probe(root));
     compressed_parent_staging_fixture(tests, *store);
@@ -588,6 +791,9 @@ int wmain(int argc, wchar_t** argv)
     tests.check("inherited_acl_root_fixture_created", unsafe_created);
     if (unsafe_created)
     {
+        const auto unsafe_status = storage::state_store::inspect_request(unsafe_root, "status_fixture");
+        tests.check("status_unprotected_root_refused_without_acl_repair", unsafe_status.lookup_state
+            == storage::request_lookup_state::unavailable && unsafe_status.observation_error.code == "state_acl_not_private");
         const auto refused = storage::state_store::open_at(unsafe_root);
         tests.check("unsafe_existing_root_refused", !refused && refused.error().code == "state_acl_not_private");
         tests.check("unsafe_root_fixture_removed", RemoveDirectoryW(unsafe_root.c_str()) != FALSE);

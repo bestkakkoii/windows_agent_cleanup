@@ -45,6 +45,39 @@ project(windows_agent_cleanup VERSION 2.0.0 LANGUAGES CXX)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# One configured source identity owns native module and PE string metadata.
+# A source archive without Git remains explicitly unknown; no release binding
+# or reproducibility attestation is inferred from a commit-shaped label.
+set(secure_erase_application_version "${PROJECT_VERSION}-dev.1")
+set(secure_erase_numeric_version "${PROJECT_VERSION_MAJOR},${PROJECT_VERSION_MINOR},${PROJECT_VERSION_PATCH},1")
+set(secure_erase_source_commit "unknown")
+set(secure_erase_source_commit_known 0)
+set(secure_erase_source_dirty 1)
+set(secure_erase_source_dirty_known 0)
+find_package(Git QUIET)
+if(Git_FOUND)
+    execute_process(COMMAND "${GIT_EXECUTABLE}" rev-parse HEAD WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        RESULT_VARIABLE secure_erase_git_status OUTPUT_VARIABLE secure_erase_git_commit
+        OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    if(secure_erase_git_status EQUAL 0 AND secure_erase_git_commit MATCHES "^[0-9a-f]+$")
+        string(LENGTH "${secure_erase_git_commit}" secure_erase_commit_length)
+        if(secure_erase_commit_length EQUAL 40)
+            set(secure_erase_source_commit "${secure_erase_git_commit}")
+            set(secure_erase_source_commit_known 1)
+            execute_process(COMMAND "${GIT_EXECUTABLE}" status --porcelain --untracked-files=normal
+                WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" RESULT_VARIABLE secure_erase_dirty_status
+                OUTPUT_VARIABLE secure_erase_dirty_output ERROR_QUIET)
+            if(secure_erase_dirty_status EQUAL 0)
+                set(secure_erase_source_dirty_known 1)
+                if(secure_erase_dirty_output STREQUAL "")
+                    set(secure_erase_source_dirty 0)
+                endif()
+            endif()
+        endif()
+    endif()
+endif()
+set(secure_erase_build_identity "${secure_erase_application_version}/${secure_erase_source_commit}/dirty=${secure_erase_source_dirty}/known=${secure_erase_source_dirty_known}/${CMAKE_CXX_COMPILER_ID}-${CMAKE_CXX_COMPILER_VERSION}")
+
 if(MSVC)
     if(NOT WIN32 OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8 OR MSVC_VERSION LESS 1936)
         message(FATAL_ERROR "secure_erase.platform_rejected: x64 MSVC >=19.36 with the installed std module is required")
@@ -124,6 +157,11 @@ function(secure_erase_embed_manifest target execution_level manifest_path)
     if(NOT MSVC OR NOT target_type STREQUAL "EXECUTABLE")
         message(FATAL_ERROR "secure_erase.manifest_target_rejected: ${target}")
     endif()
+    file(READ "${CMAKE_SOURCE_DIR}/${manifest_path}" secure_erase_manifest_text)
+    string(REGEX MATCH "assemblyIdentity version=\"([^\"]+)\"" secure_erase_manifest_identity "${secure_erase_manifest_text}")
+    if(NOT CMAKE_MATCH_1 STREQUAL "${PROJECT_VERSION}.1")
+        message(FATAL_ERROR "secure_erase.manifest_version_mismatch: ${manifest_path}; expected ${PROJECT_VERSION}.1")
+    endif()
     # Keep the complete application manifest and align the linker's generated
     # UAC fragment with it. The entire fragment must remain one linker argument.
     target_sources(${target} PRIVATE "${manifest_path}")
@@ -145,6 +183,13 @@ target_sources(secure_erase_engine PRIVATE FILE_SET implementation_partitions TY
     src/core/engine_admission.cpp src/core/engine_execution.cpp)
 target_link_libraries(secure_erase_engine PUBLIC Threads::Threads)
 secure_erase_configure_target(secure_erase_engine)
+target_compile_definitions(secure_erase_engine PRIVATE
+    SECURE_ERASE_APPLICATION_VERSION="${secure_erase_application_version}"
+    SECURE_ERASE_SOURCE_COMMIT="${secure_erase_source_commit}"
+    SECURE_ERASE_SOURCE_COMMIT_KNOWN=${secure_erase_source_commit_known}
+    SECURE_ERASE_SOURCE_DIRTY=${secure_erase_source_dirty}
+    SECURE_ERASE_SOURCE_DIRTY_KNOWN=${secure_erase_source_dirty_known}
+    SECURE_ERASE_BUILD_IDENTITY="${secure_erase_build_identity}")
 add_library(secure_erase_core ALIAS secure_erase_engine)
 
 enable_testing()
@@ -219,12 +264,22 @@ if(NOT SECURE_ERASE_PORTABLE_TEST_ONLY)
     add_executable(secure_erase_cli src/cli/main.cpp src/windows/app_icon.rc)
     target_link_libraries(secure_erase_cli PRIVATE secure_erase_application)
     target_include_directories(secure_erase_cli PRIVATE assets)
+    target_compile_definitions(secure_erase_cli PRIVATE
+        "$<$<COMPILE_LANGUAGE:RC>:SECURE_ERASE_RESOURCE_VERSION=${secure_erase_numeric_version}>"
+        "$<$<COMPILE_LANGUAGE:RC>:SECURE_ERASE_APPLICATION_VERSION=\"${secure_erase_application_version}\">"
+        "$<$<COMPILE_LANGUAGE:RC>:SECURE_ERASE_BUILD_IDENTITY=\"${secure_erase_build_identity}\">"
+        "$<$<COMPILE_LANGUAGE:RC>:SECURE_ERASE_ORIGINAL_FILENAME=\"secure_erase_cli.exe\">")
     secure_erase_configure_target(secure_erase_cli)
     secure_erase_embed_manifest(secure_erase_cli asInvoker src/windows/agent.manifest)
     add_executable(secure_erase_gui WIN32 src/gui/main.cpp src/windows/app_icon.rc)
     target_link_libraries(secure_erase_gui PRIVATE secure_erase_application secure_erase_imgui
         d3d11 dxgi shell32 ole32 uuid user32 comdlg32)
     target_include_directories(secure_erase_gui PRIVATE assets)
+    target_compile_definitions(secure_erase_gui PRIVATE
+        "$<$<COMPILE_LANGUAGE:RC>:SECURE_ERASE_RESOURCE_VERSION=${secure_erase_numeric_version}>"
+        "$<$<COMPILE_LANGUAGE:RC>:SECURE_ERASE_APPLICATION_VERSION=\"${secure_erase_application_version}\">"
+        "$<$<COMPILE_LANGUAGE:RC>:SECURE_ERASE_BUILD_IDENTITY=\"${secure_erase_build_identity}\">"
+        "$<$<COMPILE_LANGUAGE:RC>:SECURE_ERASE_ORIGINAL_FILENAME=\"secure_erase_gui.exe\">")
     secure_erase_configure_target(secure_erase_gui)
     secure_erase_embed_manifest(secure_erase_gui requireAdministrator src/windows/application.manifest)
 

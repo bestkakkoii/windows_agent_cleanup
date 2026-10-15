@@ -28,6 +28,8 @@ jobs:
         run: python scripts/validate.py --output-dir build/source_validation
       - name: Check archive integrity rejection cases
         run: python tests/package_tests.py
+      - name: Check deterministic future runtime packaging with synthetic PE fixtures
+        run: python tests/package_runtime_tests.py
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:
@@ -89,6 +91,37 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'test_source.package_failed' }
           python scripts/verify_package.py $archive --expected-commit $env:GITHUB_SHA
           if ($LASTEXITCODE -ne 0) { throw 'test_source.archive_verification_failed' }
+      - name: Assemble and inspect unpublished runtime test bundle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cli = (Resolve-Path build/windows_release/secure_erase_cli.exe).Path
+          $gui = (Resolve-Path build/windows_release/secure_erase_gui.exe).Path
+          $capture = & $cli capabilities --contract-version 2
+          if ($LASTEXITCODE -ne 0) { throw 'test_runtime.capabilities_failed' }
+          $cliHash = (Get-FileHash -LiteralPath $cli -Algorithm SHA256).Hash.ToLowerInvariant()
+          $guiHash = (Get-FileHash -LiteralPath $gui -Algorithm SHA256).Hash.ToLowerInvariant()
+          $provenance = @{
+            schema = 'windows_agent_cleanup.runtime_inputs.v1'
+            distribution_version = '2.0.0-dev.1'
+            approved_binary_sha256 = @{'bin/secure_erase_cli.exe' = $cliHash; 'bin/secure_erase_gui.exe' = $guiHash}
+            capabilities_capture = @{cli_sha256 = $cliHash; result = ($capture | ConvertFrom-Json)}
+          }
+          $output = Join-Path $env:RUNNER_TEMP 'test_runtime'
+          New-Item -ItemType Directory -Force $output | Out-Null
+          $inputs = Join-Path $env:RUNNER_TEMP 'runtime_inputs.json'
+          [IO.File]::WriteAllText($inputs, ($provenance | ConvertTo-Json -Depth 24), [Text.UTF8Encoding]::new($false))
+          $archive = Join-Path $output "windows_agent_cleanup_test_runtime_$($env:GITHUB_SHA.Substring(0, 12)).zip"
+          python scripts/package_runtime.py --output $archive --cli $cli --gui $gui --provenance $inputs
+          if ($LASTEXITCODE -ne 0) { throw 'test_runtime.package_failed' }
+          python scripts/package_runtime.py --verify $archive
+          if ($LASTEXITCODE -ne 0) { throw 'test_runtime.archive_verification_failed' }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: test_runtime_${{ github.sha }}
+          path: ${{ runner.temp }}/test_runtime/
+          retention-days: 14
+          if-no-files-found: error
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: test_source_${{ github.sha }}

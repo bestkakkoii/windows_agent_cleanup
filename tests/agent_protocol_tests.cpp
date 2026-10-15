@@ -61,6 +61,27 @@ int main()
     expect(!agent::within_scope("C:\\fixture", ""), "empty_scope_rejected");
     expect(agent::json_quote("a\n\"\\") == "\"a\\u000a\\\"\\\\\"", "json_escape");
     expect(!agent::parse_manifest_line(std::string(agent::maximum_record_bytes + 1, ' ')), "record_bound");
+    expect(agent::statistics_json({}) == "null", "unsupported_statistics_are_null");
+    secure_erase::engine::operation_statistics statistics;
+    statistics.supported = true;
+    statistics.selected.files = 2;
+    statistics.selected.directories = 3;
+    statistics.logical_bytes.selected = std::numeric_limits<std::uint64_t>::max();
+    statistics.logical_bytes.selected_unknown = 1;
+    statistics.final_failures.reparse = 1;
+    const auto statistics_text = agent::statistics_json(statistics);
+    expect(statistics_text.find("18446744073709551615") != std::string::npos,
+        "statistics_preserve_uint64_precision");
+    expect(statistics_text.find("\"selected\":{\"files\":2,\"directories\":3,\"unclassified\":0}") != std::string::npos &&
+        statistics_text.find("\"selected_unknown\":1") != std::string::npos &&
+        statistics_text.find("\"logical_bytes_semantics\":\"frozen_default_stream_snapshot\"") != std::string::npos,
+        "statistics_classification_and_unknown_snapshot_semantics");
+    const auto guidance = agent::action_guidance_json({agent::next_action_kind::reconcile_unknown, "unknown\nresult", false});
+    expect(guidance == "\"next_action\":{\"action\":\"reconcile_unknown\",\"reason\":\"unknown\\u000aresult\"},\"retry_safe\":false",
+        "unknown_result_cannot_authorize_replay");
+    const auto bounded_guidance = agent::action_guidance_json({agent::next_action_kind::correct_input, std::string(1024, 'x'), true});
+    expect(bounded_guidance.size() < 256 && bounded_guidance.find(std::string(129, 'x')) == std::string::npos,
+        "guidance_reason_is_bounded");
     std::cout << "{\"checks\":" << checks << ",\"failed\":" << failures << "}\n";
     return failures == 0 ? 0 : 1;
 }

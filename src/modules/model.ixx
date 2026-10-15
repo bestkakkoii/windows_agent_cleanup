@@ -151,6 +151,56 @@ struct target_outcome
     std::uint64_t written_bytes{};
     std::uint64_t verified_bytes{};
     std::uint32_t native_code{};
+    // CONTRACT: Quick-only unique backend-call evidence for live-session retry.
+    bool remove_attempted{};
+};
+
+// CONTRACT: Namespace entries are unique frozen selections, not manifest lines.
+// Logical lengths are known default-stream snapshots, never allocated/reclaimed
+// bytes. Every unknown length contributes one unknown count, including entries
+// without reliable type metadata. Unsupported operations leave supported false.
+struct namespace_statistics
+{
+    std::uint64_t files{};
+    std::uint64_t directories{};
+    std::uint64_t unclassified{};
+};
+
+struct logical_byte_statistics
+{
+    std::uint64_t selected{};
+    std::uint64_t remove_attempted{};
+    std::uint64_t completed{};
+    std::uint64_t selected_unknown{};
+    std::uint64_t remove_attempted_unknown{};
+    std::uint64_t completed_unknown{};
+};
+
+struct failure_statistics
+{
+    std::uint64_t scope_protection{};
+    std::uint64_t reparse{};
+    std::uint64_t identity{};
+    std::uint64_t access_lock{};
+    std::uint64_t resource{};
+    std::uint64_t report_audit{};
+    std::uint64_t other{};
+};
+
+struct operation_statistics
+{
+    bool supported{};
+    namespace_statistics selected;
+    namespace_statistics remove_attempted;
+    namespace_statistics completed;
+    logical_byte_statistics logical_bytes;
+    std::uint64_t failed{};
+    std::uint64_t pending{};
+    failure_statistics final_failures;
+    // CONTRACT: Steady-clock wall milliseconds for the core-owned phases only.
+    // Parallel workers are not summed. Recovery is null when never entered.
+    std::optional<double> first_pass_ms;
+    std::optional<double> recovery_ms;
 };
 
 struct run_report
@@ -163,6 +213,7 @@ struct run_report
     std::string plan_fingerprint{};
     // A job-level stop does not turn unattempted targets into attempted failures.
     error stopping_error{};
+    operation_statistics statistics;
 };
 
 struct options

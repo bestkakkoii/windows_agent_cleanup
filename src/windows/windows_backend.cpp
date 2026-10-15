@@ -20,6 +20,7 @@ import secure_erase.model;
 import secure_erase.platform;
 import secure_erase.retained_copies;
 import secure_erase.quick_delete;
+import secure_erase.metadata;
 
 namespace secure_erase::engine
 {
@@ -35,6 +36,24 @@ namespace
         const bool device = native == ERROR_DEVICE_NOT_CONNECTED || native == ERROR_IO_DEVICE ||
             native == ERROR_CRC || native == ERROR_NOT_READY || native == ERROR_GEN_FAILURE;
         return {std::move(code), native, device};
+    }
+
+    result<void> require_elevation(std::string_view denial_code, DWORD denial_native)
+    {
+        const auto observed = inspect_host_readiness();
+        if (!observed.elevated.has_value())
+        {
+            // DIAGNOSTIC: Unknown effective-token state must retain the query's
+            // original code/native status rather than become a privilege denial.
+            const auto reason = observed.elevation_error.value_or(
+                host_observation_error{"token_query_failed", ERROR_INVALID_DATA});
+            return std::unexpected(fail(std::string(reason.code), reason.native_code));
+        }
+        if (!*observed.elevated)
+        {
+            return std::unexpected(fail(std::string(denial_code), denial_native));
+        }
+        return {};
     }
 
     class handle
@@ -1842,16 +1861,9 @@ namespace
 
         bool is_elevated() const noexcept override
         {
-            HANDLE raw{};
-            if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &raw))
-            {
-                return false;
-            }
-            handle token(raw);
-            TOKEN_ELEVATION elevation{};
-            DWORD returned{};
-            return GetTokenInformation(token.get(), TokenElevation, &elevation, sizeof(elevation), &returned) &&
-                returned >= sizeof(elevation) && elevation.TokenIsElevated != 0;
+            // CONTRACT: This legacy boolean interface fails closed when the
+            // shared typed observation is unknown; CLI retains its diagnostic.
+            return inspect_host_readiness().elevated.value_or(false);
         }
 
         result<void> begin_execution() override
@@ -1879,9 +1891,10 @@ namespace
 
         result<std::vector<target_snapshot>> preview(const std::vector<std::string>& paths) override
         {
-            if (!is_elevated())
+            auto privilege = require_elevation("administrator_required", ERROR_ELEVATION_REQUIRED);
+            if (!privilege)
             {
-                return std::unexpected(fail("administrator_required", ERROR_ELEVATION_REQUIRED));
+                return std::unexpected(privilege.error());
             }
             auto roots = protection_roots(state_path_, image_cache_);
             if (!roots)
@@ -1925,7 +1938,12 @@ namespace
 
         result<std::unique_ptr<target_handle>> acquire(const target_snapshot& target) override
         {
-            if (!is_elevated() || target.support == capability::blocked || !target.protection_reasons.empty())
+            auto privilege = require_elevation("target_execution_denied", ERROR_ACCESS_DENIED);
+            if (!privilege)
+            {
+                return std::unexpected(privilege.error());
+            }
+            if (target.support == capability::blocked || !target.protection_reasons.empty())
             {
                 return std::unexpected(fail("target_execution_denied", ERROR_ACCESS_DENIED));
             }
@@ -2592,6 +2610,10 @@ namespace
         {
             return std::unexpected(fail("quick_allocation_size_invalid", ERROR_INVALID_DATA));
         }
+        if (standard.EndOfFile.QuadPart < 0)
+        {
+            return std::unexpected(fail("quick_logical_size_invalid", ERROR_INVALID_DATA));
+        }
         if (standard.DeletePending || (value.basic.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT))
         {
             return std::unexpected(fail("quick_reparse_or_delete_pending_denied", ERROR_ACCESS_DENIED));
@@ -2632,6 +2654,12 @@ namespace
         value.target.creation_time = static_cast<std::uint64_t>(value.basic.CreationTime.QuadPart);
         value.target.attributes = value.basic.FileAttributes;
         value.target.directory = standard.Directory != FALSE;
+        // CONTRACT: A successful validated observation establishes type and
+        // snapshot default-stream length, never physical allocation/reclaim.
+        value.target.type_known = true;
+        value.target.logical_size_known = true;
+        value.target.logical_size_bytes = value.target.directory ? 0 :
+            static_cast<std::uint64_t>(standard.EndOfFile.QuadPart);
         // CONTRACT: Default-stream allocation is only an observed scheduling hint.
         // Hardlinks, named streams, shared extents and open handles affect reclaim.
         value.target.allocated_bytes = value.target.directory ? 0 :
@@ -2678,10 +2706,10 @@ namespace
             {
                 return scoped;
             }
-            windows_platform elevation_check(state_path_);
-            if (!elevation_check.is_elevated())
+            auto privilege = require_elevation("administrator_required", ERROR_ELEVATION_REQUIRED);
+            if (!privilege)
             {
-                return std::unexpected(fail("administrator_required", ERROR_ELEVATION_REQUIRED));
+                return std::unexpected(privilege.error());
             }
             auto roots = protection_roots(state_path_, image_cache_);
             if (!roots)
@@ -3939,6 +3967,132 @@ namespace
         std::uint64_t context_handles_{};
         std::atomic_bool halted_{};
     };
+}
+
+host_readiness inspect_host_readiness() noexcept
+{
+    host_readiness observed;
+    observed.required_windows_build = metadata::min_windows_build();
+
+    // INTEROP: The loaded NT runtime owns the documented RtlGetVersion ABI.
+    // Resolving it does not load a DLL or trust manifest-adjusted version APIs.
+    const auto runtime = GetModuleHandleW(L"ntdll.dll");
+    const auto address = runtime == nullptr ? nullptr : GetProcAddress(runtime, "RtlGetVersion");
+    if (address == nullptr)
+    {
+        observed.platform_error = host_observation_error{"windows_version_query_failed", GetLastError()};
+    }
+    else
+    {
+        using query_version = LONG(WINAPI*)(OSVERSIONINFOW*);
+        const auto query = std::bit_cast<query_version>(address);
+        OSVERSIONINFOW version{};
+        version.dwOSVersionInfoSize = sizeof(version);
+        const auto status = query(&version);
+        if (status < 0)
+        {
+            observed.platform_error = host_observation_error{"windows_version_query_failed",
+                static_cast<std::uint32_t>(status)};
+        }
+        else if (version.dwBuildNumber == 0 || version.dwPlatformId != VER_PLATFORM_WIN32_NT)
+        {
+            observed.platform_error = host_observation_error{"windows_version_invalid", ERROR_INVALID_DATA};
+        }
+        else
+        {
+            observed.windows_build = version.dwBuildNumber;
+        }
+    }
+
+    const auto architecture = [](USHORT machine) noexcept
+    {
+        switch (machine)
+        {
+        case IMAGE_FILE_MACHINE_AMD64:
+            return host_architecture::x64;
+        case IMAGE_FILE_MACHINE_I386:
+            return host_architecture::x86;
+        case IMAGE_FILE_MACHINE_ARM64:
+            return host_architecture::arm64;
+        case IMAGE_FILE_MACHINE_ARM:
+        case IMAGE_FILE_MACHINE_ARMNT:
+            return host_architecture::arm;
+        case IMAGE_FILE_MACHINE_UNKNOWN:
+            return host_architecture::unknown;
+        default:
+            return host_architecture::other;
+        }
+    };
+    USHORT process_machine{};
+    USHORT native_machine{};
+    if (!IsWow64Process2(GetCurrentProcess(), &process_machine, &native_machine))
+    {
+        observed.architecture_error = host_observation_error{"native_architecture_query_failed", GetLastError()};
+    }
+    else
+    {
+        observed.native_architecture = architecture(native_machine);
+        PROCESS_MACHINE_INFORMATION information{};
+        // CONTRACT: Native machine alone cannot identify an x64 process under
+        // ARM64 emulation. Query this Windows 11 process's actual machine type.
+        if (!GetProcessInformation(GetCurrentProcess(), ProcessMachineTypeInfo,
+            &information, sizeof(information)))
+        {
+            observed.architecture_error = host_observation_error{"process_architecture_query_failed", GetLastError()};
+        }
+        else
+        {
+            observed.process_architecture = architecture(information.ProcessMachine);
+            if (observed.native_architecture == host_architecture::unknown ||
+                observed.process_architecture == host_architecture::unknown)
+            {
+                observed.architecture_error = host_observation_error{"architecture_observation_invalid", ERROR_INVALID_DATA};
+            }
+        }
+    }
+
+    TOKEN_ELEVATION elevation{};
+    DWORD returned{};
+    // SECURITY: The effective thread token is authoritative when impersonating;
+    // the pseudo handle needs no close and grants no privilege adjustment.
+    if (!GetTokenInformation(GetCurrentThreadEffectiveToken(), TokenElevation,
+        &elevation, sizeof(elevation), &returned))
+    {
+        observed.elevation_error = host_observation_error{"token_query_failed", GetLastError()};
+    }
+    else if (returned < sizeof(elevation))
+    {
+        observed.elevation_error = host_observation_error{"token_query_failed", ERROR_INVALID_DATA};
+    }
+    else
+    {
+        observed.elevated = elevation.TokenIsElevated != 0;
+    }
+
+    const bool unsupported_build = observed.windows_build &&
+        *observed.windows_build < observed.required_windows_build;
+    const bool unsupported_architecture =
+        (observed.native_architecture != host_architecture::unknown &&
+            observed.native_architecture != observed.required_native_architecture) ||
+        (observed.process_architecture != host_architecture::unknown &&
+            observed.process_architecture != observed.required_process_architecture);
+    if (unsupported_build || unsupported_architecture)
+    {
+        observed.platform_supported = false;
+    }
+    else if (observed.windows_build && !observed.architecture_error && !observed.platform_error)
+    {
+        observed.platform_supported = true;
+    }
+    if (observed.platform_supported == false || observed.elevated == false)
+    {
+        observed.filesystem_commands_ready = false;
+    }
+    else if (observed.platform_supported == true && observed.elevated == true)
+    {
+        observed.filesystem_commands_ready = true;
+    }
+    return observed;
 }
 
 result<std::unique_ptr<quick::backend>> make_windows_quick_backend(std::wstring_view state_directory,

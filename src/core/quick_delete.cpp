@@ -86,12 +86,79 @@ void append_string(std::vector<std::byte>& bytes, std::string_view value)
         left.preparation_error.code == right.preparation_error.code &&
         left.preparation_error.native_code == right.preparation_error.native_code &&
         left.preparation_error.device_fault == right.preparation_error.device_fault &&
-        left.allocated_bytes == right.allocated_bytes;
+        left.allocated_bytes == right.allocated_bytes &&
+        left.logical_size_bytes == right.logical_size_bytes &&
+        left.logical_size_known == right.logical_size_known && left.type_known == right.type_known;
+}
+
+[[nodiscard]] unsigned char classify_failure(const engine::error& value)
+{
+    const std::string_view code = value.code;
+    if (code.contains("reparse"))
+    {
+        return 1;
+    }
+    if (code.contains("identity") || code.contains("replaced") || code.contains("changed"))
+    {
+        return 2;
+    }
+    if (code.contains("scope") || code.contains("protect") || code.contains("system") ||
+        code.contains("root_denied"))
+    {
+        return 0;
+    }
+    if (code.contains("audit") || code.contains("report") || code.contains("outcome") ||
+        code.contains("store") || code.contains("intent"))
+    {
+        return 5;
+    }
+    if (code.contains("resource") || code.contains("memory") || code.contains("device_stopped") ||
+        code.contains("headroom") || code.contains("allocation") || code.contains("limit"))
+    {
+        return 4;
+    }
+    if (code.contains("lock") || code.contains("access") || code.contains("readonly") ||
+        value.native_code == 5 || value.native_code == 32 || value.native_code == 33 ||
+        value.native_code == 145)
+    {
+        return 3;
+    }
+    return 6;
+}
+
+void add_failure_statistics(engine::failure_statistics& failures, unsigned char category)
+{
+    // CONTRACT: Exactly one increment per admitted unique final failure; each
+    // category is bounded by the checked selected target count.
+    switch (category)
+    {
+    case 0:
+        ++failures.scope_protection;
+        break;
+    case 1:
+        ++failures.reparse;
+        break;
+    case 2:
+        ++failures.identity;
+        break;
+    case 3:
+        ++failures.access_lock;
+        break;
+    case 4:
+        ++failures.resource;
+        break;
+    case 5:
+        ++failures.report_audit;
+        break;
+    default:
+        ++failures.other;
+        break;
+    }
 }
 
 [[nodiscard]] bool accepted(const engine::target_outcome& value)
 {
-    return value.deleted && value.code == "deleted_quick_namespace_removed" &&
+    return value.deleted && value.remove_attempted && value.code == "deleted_quick_namespace_removed" &&
         !value.logical_overwrite_verified && !value.physical_sanitization_guaranteed &&
         value.written_bytes == 0 && value.verified_bytes == 0 && value.native_code == 0;
 }
@@ -135,6 +202,7 @@ void append_string(std::vector<std::byte>& bytes, std::string_view value)
             outcome.code.size() > 512 || !valid_utf8(outcome.code) ||
             outcome.logical_overwrite_verified || outcome.physical_sanitization_guaranteed ||
             outcome.written_bytes != 0 || outcome.verified_bytes != 0 ||
+            (outcome.remove_attempted && !value.targets[index].preparation_error.code.empty()) ||
             (outcome.deleted && (!accepted(outcome) ||
              !value.targets[index].preparation_error.code.empty())) ||
             (!outcome.deleted && outcome.code == "deleted_quick_namespace_removed") ||
@@ -165,6 +233,9 @@ void append_string(std::vector<std::byte>& bytes, std::string_view value)
     return !value.path.empty() && value.path.size() <= 131072 &&
         value.identity.size() <= 1024 && value.device_key.size() <= 1024 &&
         value.preparation_error.code.size() <= 512 &&
+        (!value.logical_size_known || value.type_known) &&
+        (value.logical_size_known || value.logical_size_bytes == 0) &&
+        (!value.type_known || !value.directory || value.logical_size_bytes == 0) &&
         (bound || !value.preparation_error.code.empty()) &&
         valid_utf8(value.path) && valid_utf8(value.identity) &&
         valid_utf8(value.device_key) && valid_utf8(value.preparation_error.code) &&
@@ -180,6 +251,18 @@ void append_string(std::vector<std::byte>& bytes, std::string_view value)
     }
     value += amount;
     return true;
+}
+
+[[nodiscard]] bool add_namespace_statistics(bool directory, bool type_known, bool size_known,
+    std::uint64_t size, engine::namespace_statistics& counts, std::uint64_t& bytes, std::uint64_t& unknown)
+{
+    if ((size_known && !type_known) || (!size_known && size != 0) ||
+        (type_known && directory && size != 0))
+    {
+        return false;
+    }
+    auto& count = !type_known ? counts.unclassified : directory ? counts.directories : counts.files;
+    return checked_add(count, 1) && (size_known ? checked_add(bytes, size) : checked_add(unknown, 1));
 }
 
 [[nodiscard]] engine::result<admission_estimate> fit_resources(admission_estimate estimate,
@@ -330,7 +413,9 @@ public:
         resource_sample resources, admission_estimate admission)
         : value_(&value), host_(host), controls_(controls), settings_(settings),
           observer_(std::move(observer)), errors_(value.targets.size()),
-          attempted_(value.targets.size()), deleted_(value.targets.size()), nodes_(value.targets.size()),
+          attempted_(value.targets.size()), deleted_(value.targets.size()),
+          remove_attempted_(value.targets.size()), failure_categories_(value.targets.size()),
+          nodes_(value.targets.size()),
           resources_(std::move(resources)), admission_(admission),
           worker_ceiling_(admission.worker_capacity), worker_limit_(admission.worker_limit),
           target_count_(value.targets.size())
@@ -369,10 +454,16 @@ public:
                 ++progress_.attempted;
                 ++progress_.failed;
             }
+            if (previous != nullptr && previous->targets[index].remove_attempted)
+            {
+                remove_attempted_[index] = true;
+            }
+            failure_categories_[index] = classify_failure(errors_[index]);
             outcome.code.reserve(512);
             errors_[index].code.reserve(512);
             report_.targets.push_back(std::move(outcome));
         }
+        initialize_statistics();
         build_dependencies();
     }
 
@@ -382,6 +473,7 @@ public:
         : source_(&source), outcomes_(&outcomes), host_(host), controls_(controls),
           settings_(settings), observer_(std::move(observer)),
           attempted_(source.info().target_count), deleted_(source.info().target_count),
+          remove_attempted_(source.info().target_count), failure_categories_(source.info().target_count),
           nodes_(source.info().target_count), indexes_(source.info().target_count),
           resources_(std::move(resources)), admission_(admission),
           worker_ceiling_(admission.worker_capacity), worker_limit_(admission.worker_limit),
@@ -419,11 +511,13 @@ public:
             if (outcome.identity != identity || outcome.code.empty() || outcome.code.size() > 512 ||
                 !valid_utf8(outcome.code) || outcome.logical_overwrite_verified ||
                 outcome.physical_sanitization_guaranteed || outcome.written_bytes != 0 ||
-                outcome.verified_bytes != 0 || (outcome.deleted && !accepted(outcome)) ||
+                outcome.verified_bytes != 0 || (outcome.remove_attempted && index->preparation_failed) ||
+                (outcome.deleted && !accepted(outcome)) ||
                 (!outcome.deleted && outcome.code == "deleted_quick_namespace_removed"))
             {
                 throw staged_failure{failure("quick_staged_previous_binding_invalid")};
             }
+            remove_attempted_[position] = outcome.remove_attempted;
             if (outcome.deleted)
             {
                 if (index->preparation_failed)
@@ -438,6 +532,7 @@ public:
             else if (index->preparation_failed)
             {
                 auto target = load_target(position);
+                failure_categories_[position] = classify_failure(target.preparation_error);
                 outcome.code = target.preparation_error.code;
                 outcome.native_code = target.preparation_error.native_code;
                 put_outcome(position, outcome);
@@ -446,6 +541,7 @@ public:
                 ++progress_.failed;
             }
         }
+        initialize_statistics();
         build_dependencies();
     }
 
@@ -456,6 +552,7 @@ public:
 
     [[nodiscard]] engine::run_report perform()
     {
+        const auto first_pass_started = std::chrono::steady_clock::now();
         publish("first_pass");
         const auto worker = [this]()
         {
@@ -558,8 +655,10 @@ public:
             }
             started.count_down();
         }
+        report_.statistics.first_pass_ms = elapsed_ms(first_pass_started);
         if (!stopped())
         {
+            const auto recovery_started = std::chrono::steady_clock::now();
             try
             {
                 recover();
@@ -569,6 +668,17 @@ public:
                 resource_failure_ = "quick_recovery_exception_outcome_unknown";
                 fatal_.store(true);
             }
+            report_.statistics.recovery_ms = elapsed_ms(recovery_started);
+        }
+        report_.statistics.failed = progress_.failed;
+        report_.statistics.pending = progress_.total - progress_.attempted;
+        for (std::size_t index = 0; index < target_count_; ++index)
+        {
+            if (!attempted_[index] || deleted_[index])
+            {
+                continue;
+            }
+            add_failure_statistics(report_.statistics.final_failures, failure_categories_[index]);
         }
         if (!resource_failure_.empty())
         {
@@ -593,6 +703,49 @@ public:
     }
 
 private:
+    [[nodiscard]] static double elapsed_ms(std::chrono::steady_clock::time_point started)
+    {
+        return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
+    }
+
+    void add_statistics(std::size_t position, engine::namespace_statistics& counts,
+        std::uint64_t& bytes, std::uint64_t& unknown)
+    {
+        const auto directory = is_directory(position);
+        const auto type_known = value_ != nullptr ? value_->targets[position].type_known : indexes_[position].type_known;
+        const auto size_known = value_ != nullptr ? value_->targets[position].logical_size_known :
+            indexes_[position].logical_size_known;
+        const auto size = value_ != nullptr ? value_->targets[position].logical_size_bytes :
+            indexes_[position].logical_size_bytes;
+        if (!add_namespace_statistics(directory, type_known, size_known, size, counts, bytes, unknown))
+        {
+            throw staged_failure{failure("quick_statistics_size_overflow")};
+        }
+    }
+
+    void initialize_statistics()
+    {
+        auto& statistics = report_.statistics;
+        statistics.supported = true;
+        // SECURITY: Validate the complete selected sum before any backend remove.
+        // All later sums are subsets of this admitted checked total.
+        for (std::size_t position = 0; position < target_count_; ++position)
+        {
+            add_statistics(position, statistics.selected, statistics.logical_bytes.selected,
+                statistics.logical_bytes.selected_unknown);
+            if (remove_attempted_[position])
+            {
+                add_statistics(position, statistics.remove_attempted, statistics.logical_bytes.remove_attempted,
+                    statistics.logical_bytes.remove_attempted_unknown);
+            }
+            if (deleted_[position])
+            {
+                add_statistics(position, statistics.completed, statistics.logical_bytes.completed,
+                    statistics.logical_bytes.completed_unknown);
+            }
+        }
+    }
+
     [[nodiscard]] bool is_directory(std::size_t position) const
     {
         return value_ != nullptr ? value_->targets[position].directory : indexes_[position].directory;
@@ -643,6 +796,8 @@ private:
             bytes > source_->info().maximum_target_bytes || depth > source_->info().maximum_ancestor_depth ||
             !valid_target(*loaded) ||
             loaded->directory != index.directory || loaded->allocated_bytes != index.allocated_bytes ||
+            loaded->logical_size_bytes != index.logical_size_bytes ||
+            loaded->logical_size_known != index.logical_size_known || loaded->type_known != index.type_known ||
             loaded->device_key != device_key(position) ||
             (!loaded->preparation_error.code.empty()) != index.preparation_failed ||
             target_key(*loaded) != crypto::hex_digest(index.namespace_digest))
@@ -961,11 +1116,15 @@ private:
     {
         const std::scoped_lock lock(mutex_);
         progress_.stage.assign(stage);
+        report_.statistics.failed = progress_.failed;
+        report_.statistics.pending = progress_.total - progress_.attempted;
+        progress_.statistics = report_.statistics;
         last_publication_ = std::chrono::steady_clock::now();
         if (observer_)
         {
             try
             {
+                progress_.statistics = report_.statistics;
                 observer_(progress_);
             }
             catch (...)
@@ -980,6 +1139,7 @@ private:
     {
         const auto normalized = !error.code.empty() && error.code != "deleted_quick_namespace_removed" &&
             error.code.size() <= 512 && valid_utf8(error.code) ? error : failure("quick_backend_error_invalid");
+        failure_categories_[index] = classify_failure(normalized);
         if (outcomes_ == nullptr)
         {
             errors_[index] = normalized;
@@ -994,6 +1154,7 @@ private:
             fatal_.store(true);
         }
         auto outcome = get_outcome(index);
+        outcome.remove_attempted = remove_attempted_[index] != 0;
         outcome.code = normalized.code;
         outcome.native_code = normalized.native_code;
         put_outcome(index, outcome);
@@ -1002,6 +1163,16 @@ private:
     void attempt(std::size_t index, bool recover_access)
     {
         const auto target = load_target(index);
+        {
+            const std::scoped_lock lock(mutex_);
+            if (!remove_attempted_[index])
+            {
+                remove_attempted_[index] = true;
+                auto& statistics = report_.statistics;
+                add_statistics(index, statistics.remove_attempted, statistics.logical_bytes.remove_attempted,
+                    statistics.logical_bytes.remove_attempted_unknown);
+            }
+        }
         const auto removed = host_.remove(target, recover_access);
         const std::scoped_lock lock(mutex_);
         if (!attempted_[index])
@@ -1021,6 +1192,10 @@ private:
                 errors_[index] = {};
             }
             deleted_[index] = true;
+            outcome.remove_attempted = true;
+            auto& statistics = report_.statistics;
+            add_statistics(index, statistics.completed, statistics.logical_bytes.completed,
+                statistics.logical_bytes.completed_unknown);
             ++progress_.completed;
             --progress_.failed;
             put_outcome(index, outcome);
@@ -1043,8 +1218,11 @@ private:
             now - last_publication_ >= std::chrono::milliseconds(50))
         {
             last_publication_ = now;
+            report_.statistics.failed = progress_.failed;
+            report_.statistics.pending = progress_.total - progress_.attempted;
             try
             {
+                progress_.statistics = report_.statistics;
                 observer_(progress_);
             }
             catch (...)
@@ -1162,6 +1340,8 @@ private:
     std::vector<engine::error> errors_;
     std::vector<unsigned char> attempted_;
     std::vector<unsigned char> deleted_;
+    std::vector<unsigned char> remove_attempted_;
+    std::vector<unsigned char> failure_categories_;
     std::vector<node> nodes_;
     std::vector<target_index> indexes_;
     resource_sample resources_;
@@ -1188,6 +1368,94 @@ private:
 
 }
 
+engine::result<engine::operation_statistics> summarize_selection(target_source& source)
+{
+    engine::operation_statistics statistics;
+    statistics.supported = true;
+    for (std::size_t position = 0; position < source.info().target_count; ++position)
+    {
+        const auto index = source.index(position);
+        if (!index)
+        {
+            return std::unexpected(index.error());
+        }
+        if (!add_namespace_statistics(index->directory, index->type_known, index->logical_size_known,
+            index->logical_size_bytes, statistics.selected, statistics.logical_bytes.selected,
+            statistics.logical_bytes.selected_unknown))
+        {
+            return std::unexpected(failure("quick_statistics_size_overflow"));
+        }
+        if (index->preparation_failed)
+        {
+            const auto target = source.load(position);
+            if (!target)
+            {
+                return std::unexpected(target.error());
+            }
+            if (target->preparation_error.code.empty())
+            {
+                return std::unexpected(failure("quick_staged_target_binding_invalid"));
+            }
+            if (!checked_add(statistics.failed, 1))
+            {
+                return std::unexpected(failure("quick_statistics_size_overflow"));
+            }
+            add_failure_statistics(statistics.final_failures, classify_failure(target->preparation_error));
+        }
+    }
+    return statistics;
+}
+
+void sample_space(backend& host, space_observation& observation, bool before)
+{
+    auto sampled = host.sample_space(observation.volume_key);
+    if (sampled && sampled->volume_key != observation.volume_key)
+    {
+        sampled = std::unexpected(engine::error{"quick_space_volume_mismatch"});
+    }
+    auto& destination = before ? observation.before : observation.after;
+    auto& error = before ? observation.before_error : observation.after_error;
+    destination.reset();
+    error = {};
+    if (sampled)
+    {
+        destination = std::move(*sampled);
+    }
+    else
+    {
+        error = sampled.error();
+    }
+}
+
+std::pair<std::vector<space_observation>, bool> begin_space_observations(
+    backend& host, std::span<const std::string> frozen_device_keys)
+{
+    constexpr std::size_t maximum_volumes = 128;
+    std::vector<space_observation> observations;
+    observations.reserve((std::min)(maximum_volumes, frozen_device_keys.size()));
+    std::unordered_set<std::string_view> selected;
+    selected.reserve(maximum_volumes);
+    bool truncated{};
+    for (const auto& device : frozen_device_keys)
+    {
+        if (device.empty() || selected.contains(device))
+        {
+            continue;
+        }
+        if (selected.size() == maximum_volumes)
+        {
+            truncated = true;
+            break;
+        }
+        selected.insert(device);
+        space_observation observation;
+        observation.volume_key = device;
+        sample_space(host, observation, true);
+        observations.push_back(std::move(observation));
+    }
+    return {std::move(observations), truncated};
+}
+
 std::string target_key(const target& value)
 {
     std::vector<std::byte> bytes;
@@ -1200,10 +1468,10 @@ std::string target_key(const target& value)
 
 std::string fingerprint(const plan& value)
 {
-    // FORMAT: v2 is a length-delimited SHA-256 chain. Each step binds the full
+    // FORMAT: v3 is a length-delimited SHA-256 chain. Each step binds the full
     // previous digest and one target; hashing never duplicates the whole plan.
     std::vector<std::byte> bytes;
-    append_string(bytes, "secure_erase.quick_plan.v2");
+    append_string(bytes, "secure_erase.quick_plan.v3");
     append_string(bytes, value.job_id);
     append_integer(bytes, value.targets.size());
     auto digest = crypto::sha256(bytes);
@@ -1221,6 +1489,9 @@ std::string fingerprint(const plan& value)
         append_integer(bytes, target.preparation_error.native_code);
         append_integer(bytes, target.preparation_error.device_fault);
         append_integer(bytes, target.allocated_bytes);
+        append_integer(bytes, target.logical_size_bytes);
+        append_integer(bytes, target.logical_size_known);
+        append_integer(bytes, target.type_known);
         digest = crypto::sha256(bytes);
     }
     return crypto::hex_digest(digest);
@@ -1336,6 +1607,10 @@ engine::result<admission_estimate> estimate_admission(const plan& value,
     // dependency nodes, two temporary hash indexes and allocator headroom. The
     // explicit multiplier is conservative accounting, not a process-RSS promise.
     estimate.execution_metadata_bytes = count * 2048;
+    if (!checked_add(estimate.execution_metadata_bytes, sizeof(engine::operation_statistics) * 2 + 768 * 1024))
+    {
+        return std::unexpected(failure("quick_plan_size_overflow"));
+    }
     // Each volume can carry a distinct topology label. Account simultaneous old
     // and fresh probe samples plus scheduler labels and per-group counters/indexes.
     for (const auto& device : resources.devices)
@@ -1470,6 +1745,10 @@ namespace
             previous, std::move(*resources), *admission);
         return work.perform();
     }
+    catch (const staged_failure& error)
+    {
+        return std::unexpected(error.error);
+    }
     catch (const std::bad_alloc&)
     {
         return std::unexpected(failure("quick_complete_plan_allocation_failed"));
@@ -1521,6 +1800,10 @@ engine::result<admission_estimate> estimate_admission(const staged_plan_info& va
     // Compact source index + dependency nodes + flags + queue entries and
     // allocator allowance. Full target strings and outcomes stay in the store.
     estimate.execution_metadata_bytes = static_cast<std::uint64_t>(value.target_count) * 256;
+    if (!checked_add(estimate.execution_metadata_bytes, sizeof(engine::operation_statistics) * 2 + 768 * 1024))
+    {
+        return std::unexpected(failure("quick_staged_size_overflow"));
+    }
     for (const auto& device : resources.devices)
     {
         if (!checked_add(estimate.execution_metadata_bytes, 512) ||
@@ -1608,7 +1891,8 @@ engine::result<staged_report> run_staged(target_source& source, outcome_sink& ou
         const auto& counts = work.final_progress();
         staged_report summary{std::move(report.job_id), std::move(report.plan_fingerprint),
             std::move(report.status), counts.total, counts.attempted, counts.completed,
-            counts.failed, counts.total - counts.attempted, std::move(report.stopping_error)};
+            counts.failed, counts.total - counts.attempted, std::move(report.stopping_error),
+            std::move(report.statistics)};
         try
         {
             const auto finalized = outcomes.finish(summary);

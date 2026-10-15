@@ -37,8 +37,15 @@ static_assert(std::same_as<decltype(std::declval<secure_erase::quick::backend&>(
 static_assert(std::same_as<decltype(secure_erase::frontend::view_state{}.quick_space),
     std::vector<secure_erase::quick::space_observation>>);
 
+static_assert(std::same_as<decltype(secure_erase::engine::run_report{}.statistics),
+    secure_erase::engine::operation_statistics>);
+static_assert(std::same_as<decltype(secure_erase::quick::staged_report{}.statistics),
+    secure_erase::engine::operation_statistics>);
+static_assert(std::same_as<decltype(secure_erase::quick::target{}.logical_size_bytes), std::uint64_t>);
+static_assert(std::same_as<decltype(secure_erase::quick::target_index{}.logical_size_bytes), std::uint64_t>);
+
 int main()
 {
-    std::cout << "{\"suite\":\"module_interfaces\",\"compile_assertions\":15,"
+    std::cout << "{\"suite\":\"module_interfaces\",\"compile_assertions\":19,"
         "\"failed\":0,\"windows_implementation_executed\":false}\n";
 }

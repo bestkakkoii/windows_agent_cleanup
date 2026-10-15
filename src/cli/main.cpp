@@ -147,22 +147,76 @@ namespace
         return result;
     }
 
-    bool elevated()
+    bool elevated(const engine::host_readiness& host)
     {
-        HANDLE raw{};
-        if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &raw))
+        if (!host.elevated)
         {
-            fail("token_query_failed", GetLastError());
+            const auto error = host.elevation_error.value_or(
+                engine::host_observation_error{"token_query_failed", 0});
+            fail(std::string(error.code), error.native_code);
         }
-        handle token(raw);
-        TOKEN_ELEVATION elevation{};
-        DWORD returned{};
-        if (!GetTokenInformation(token.get(), TokenElevation, &elevation,
-            static_cast<DWORD>(sizeof(elevation)), &returned))
+        return *host.elevated;
+    }
+
+    using monotonic_clock = std::chrono::steady_clock;
+
+    double elapsed_ms(monotonic_clock::time_point start)
+    {
+        return std::chrono::duration<double, std::milli>(monotonic_clock::now() - start).count();
+    }
+
+    std::string nullable_number(const std::optional<double>& value)
+    {
+        return value && std::isfinite(*value) && *value >= 0 ? std::to_string(*value) : "null";
+    }
+
+    std::string readiness_json(const engine::host_readiness& value)
+    {
+        const auto boolean = [](const std::optional<bool>& observed)
         {
-            fail("token_query_failed", GetLastError());
+            return observed ? (*observed ? "true" : "false") : "null";
+        };
+        const auto error = [](const std::optional<engine::host_observation_error>& observed)
+        {
+            return observed ? "{\"code\":" + agent::json_quote(observed->code) +
+                ",\"native_code\":" + std::to_string(observed->native_code) + "}" : std::string{"null"};
+        };
+        return "{\"required_windows_build\":" + std::to_string(value.required_windows_build) +
+            ",\"required_native_architecture\":" + agent::json_quote(engine::host_architecture_name(value.required_native_architecture)) +
+            ",\"required_process_architecture\":" + agent::json_quote(engine::host_architecture_name(value.required_process_architecture)) +
+            ",\"observed_windows_build\":" + (value.windows_build ? std::to_string(*value.windows_build) : "null") +
+            ",\"native_architecture\":" + agent::json_quote(engine::host_architecture_name(value.native_architecture)) +
+            ",\"process_architecture\":" + agent::json_quote(engine::host_architecture_name(value.process_architecture)) +
+            ",\"platform_supported\":" + boolean(value.platform_supported) +
+            ",\"elevated\":" + boolean(value.elevated) +
+            ",\"filesystem_commands_ready\":" + boolean(value.filesystem_commands_ready) +
+            ",\"observation_errors\":{\"platform\":" + error(value.platform_error) +
+            ",\"architecture\":" + error(value.architecture_error) + ",\"elevation\":" + error(value.elevation_error) + "}}";
+    }
+
+    std::string space_json(const quick::space_observation& value)
+    {
+        std::optional<std::int64_t> delta;
+        if (value.before && value.after)
+        {
+            const auto before = value.before->available_to_caller;
+            const auto after = value.after->available_to_caller;
+            const auto magnitude = before > after ? before - after : after - before;
+            if (magnitude <= static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()))
+            {
+                delta = static_cast<std::int64_t>(magnitude) * (after < before ? -1 : 1);
+            }
         }
-        return elevation.TokenIsElevated != 0;
+        return "{\"volume_key\":" + agent::json_quote(value.volume_key) +
+            ",\"before_available_to_caller_bytes\":" +
+            (value.before ? std::to_string(value.before->available_to_caller) : "null") +
+            ",\"after_available_to_caller_bytes\":" +
+            (value.after ? std::to_string(value.after->available_to_caller) : "null") +
+            ",\"delta_available_to_caller_bytes\":" + (delta ? std::to_string(*delta) : "null") +
+            ",\"before_error_code\":" + agent::json_quote(value.before_error.code) +
+            ",\"before_native_code\":" + std::to_string(value.before_error.native_code) +
+            ",\"after_error_code\":" + agent::json_quote(value.after_error.code) +
+            ",\"after_native_code\":" + std::to_string(value.after_error.native_code) + "}";
     }
 
     // SECURITY: The console handler only requests cooperative cancellation. Its
@@ -195,10 +249,22 @@ namespace
         std::uint64_t pending{};
         bool resumable{};
         bool advisory{};
+        std::uint32_t contract_version{1};
+        std::optional<engine::host_readiness> readiness;
+        engine::operation_statistics statistics;
+        std::optional<double> manifest_preparation_ms;
+        std::optional<double> freeze_ms;
+        std::optional<double> reporting_before_result_ms;
+        std::optional<double> total_to_result_ms;
+        std::optional<monotonic_clock::time_point> reporting_started;
+        std::vector<quick::space_observation> space_observations;
+        bool space_supported{};
+        bool space_truncated{};
+        agent::action_guidance guidance;
 
         std::string json() const
         {
-            return "{\"schema\":\"windows_agent_cleanup.result.v1\",\"request_id\":" +
+            auto text = "{\"schema\":\"windows_agent_cleanup.result.v1\",\"request_id\":" +
                 agent::json_quote(request_id) + ",\"job_id\":" + agent::json_quote(job_id) +
                 ",\"plan_fingerprint\":" + agent::json_quote(fingerprint) + ",\"mode\":" +
                 agent::json_quote(mode) + ",\"status\":" + agent::json_quote(status) +
@@ -208,21 +274,44 @@ namespace
                 agent::json_quote(error_code) + ",\"native_code\":" + std::to_string(native_code) +
                 ",\"report_file\":" + agent::json_quote(report_file) + ",\"resumable\":" +
                 (resumable ? "true" : "false") + ",\"advisory\":" + (advisory ? "true" : "false") + "}";
+            if (contract_version == 1)
+            {
+                return text;
+            }
+            text.replace(text.find("result.v1"), std::string_view("result.v1").size(), "result.v2");
+            text.pop_back();
+            text += ",\"readiness\":" + (readiness ? readiness_json(*readiness) : "null") +
+                ",\"statistics\":" + agent::statistics_json(statistics) +
+                ",\"phases_ms\":{\"manifest_preparation_ms\":" + nullable_number(manifest_preparation_ms) +
+                ",\"freeze_ms\":" + nullable_number(freeze_ms) +
+                ",\"first_pass_ms\":" + nullable_number(statistics.first_pass_ms) +
+                ",\"recovery_ms\":" + nullable_number(statistics.recovery_ms) +
+                ",\"reporting_before_result_ms\":" + nullable_number(reporting_before_result_ms) +
+                ",\"total_to_result_ms\":" + nullable_number(total_to_result_ms) + "},\"space_observations\":";
+            if (!space_supported)
+            {
+                text += "null";
+            }
+            else
+            {
+                text += "{\"semantics\":\"observed_available_to_caller_not_attributed_reclaim\",\"truncated\":" +
+                    std::string(space_truncated ? "true" : "false") + ",\"volumes\":[";
+                for (std::size_t index = 0; index < space_observations.size(); ++index)
+                {
+                    text += (index == 0 ? "" : ",") + space_json(space_observations[index]);
+                }
+                text += "]}";
+            }
+            return text + "," + agent::action_guidance_json(guidance) + "}";
         }
     };
 
     class report_file
     {
     public:
-        explicit report_file(std::wstring_view directory, const std::string& request_id)
-            : path_(std::wstring(directory) + L"\\" + utf16(request_id + "." + random_id() + ".report.jsonl")),
-              file_(CreateFileW(path_.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_NEW,
-                  FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT, nullptr))
+        explicit report_file(storage::state_store& store, const std::string& request_id)
+            : report_file(store, request_id + "." + random_id() + ".report.jsonl", 0)
         {
-            if (!file_.valid())
-            {
-                fail("report_create_failed", GetLastError(), 4);
-            }
         }
 
         std::string path() const
@@ -283,6 +372,15 @@ namespace
         }
 
     private:
+        // SECURITY: State-store ownership constructs the same explicit private
+        // owner/DACL as its other evidence. Never inherit an elevated token's
+        // default Administrators owner for a current-user report.
+        report_file(storage::state_store& store, const std::string& basename, int)
+            : path_(store.root_path() + L"\\" + utf16(basename)),
+              file_(reinterpret_cast<HANDLE>(require(store.create_report_handle(basename), 4)))
+        {
+        }
+
         std::wstring path_;
         handle file_;
         std::uint64_t written_bytes_{};
@@ -650,7 +748,8 @@ namespace
     };
 
     void run_quick(const cli::arguments& args, storage::state_store& store,
-        report_file& output, summary& result, quick::root_source& roots)
+        report_file& output, summary& result, quick::root_source& roots,
+        monotonic_clock::time_point preparation_started)
     {
         auto host = require(engine::make_windows_quick_backend(store.root_path(), utf16(args.root)));
         auto files = require(store.staging_files());
@@ -664,7 +763,10 @@ namespace
         auto staging = require(quick::store::staging_store::create(files, random_id(),
             quick::store::options{memory, disk / 2}));
         require(host->prepare_stream(roots, *staging, controls));
+        result.manifest_preparation_ms = elapsed_ms(preparation_started);
+        const auto freeze_started = monotonic_clock::now();
         auto frozen = require(staging->finalize());
+        result.freeze_ms = elapsed_ms(freeze_started);
         staging.reset();
         const auto& info = frozen.targets->info();
         result.job_id = info.job_id;
@@ -672,15 +774,38 @@ namespace
         result.targets = info.target_count;
         constexpr std::uint64_t fixed = 2 * 1024 * 1024;
         constexpr auto maximum = std::numeric_limits<std::uint64_t>::max();
-        if (frozen.metrics.target_text_bytes > (maximum - fixed) / 6 ||
-            info.target_count > (maximum - fixed - frozen.metrics.target_text_bytes * 6) / 4096)
+        auto presentation_bytes = fixed;
+        if (args.contract_version == 2)
+        {
+            std::uint64_t maximum_key_bytes{};
+            for (const auto& key : info.device_keys)
+            {
+                maximum_key_bytes = std::max(maximum_key_bytes, static_cast<std::uint64_t>(key.size()));
+            }
+            // CONTRACT: Bounded v2 statistics/readiness fit fixed storage; admit
+            // 128 worst-case escaped volume keys + observation/error fields too.
+            if (maximum_key_bytes > ((maximum - fixed) / 128 - 2048) / 6)
+            {
+                fail("report_capacity_overflow", 0, 4);
+            }
+            presentation_bytes += 128 * (maximum_key_bytes * 6 + 2048);
+        }
+        if (frozen.metrics.target_text_bytes > (maximum - presentation_bytes) / 6 ||
+            info.target_count > (maximum - presentation_bytes - frozen.metrics.target_text_bytes * 6) / 4096)
         {
             fail("report_capacity_overflow", 0, 4);
         }
-        output.reserve(fixed + frozen.metrics.target_text_bytes * 6 + info.target_count * 4096);
+        output.reserve(presentation_bytes + frozen.metrics.target_text_bytes * 6 + info.target_count * 4096);
         intent(output, args, result);
         if (args.command == "scan")
         {
+            if (args.contract_version == 2)
+            {
+                result.statistics = require(quick::summarize_selection(*frozen.targets));
+                result.failed = result.statistics.failed;
+                result.pending = result.statistics.pending;
+            }
+            result.reporting_started = monotonic_clock::now();
             for (std::size_t index = 0; index < info.target_count; ++index)
             {
                 if (controls.request.load() != engine::control_request::proceed)
@@ -693,7 +818,7 @@ namespace
                     ",\"directory\":" + (target.directory ? "true" : "false") + ",\"error_code\":" +
                     agent::json_quote(target.preparation_error.code) + ",\"native_code\":" +
                     std::to_string(target.preparation_error.native_code) + "}");
-                if (!target.preparation_error.code.empty())
+                if (args.contract_version == 1 && !target.preparation_error.code.empty())
                 {
                     ++result.failed;
                 }
@@ -702,18 +827,32 @@ namespace
             result.advisory = true;
             return;
         }
+        if (args.contract_version == 2)
+        {
+            auto observations = quick::begin_space_observations(*host, info.device_keys);
+            result.space_observations = std::move(observations.first);
+            result.space_truncated = observations.second;
+            result.space_supported = true;
+        }
         audit(store, result, "agent_quick_started");
         quick::options settings;
         settings.max_workers = args.workers;
         settings.memory_budget_bytes = args.memory_budget_bytes;
-        auto report = require(quick::run_staged(*frozen.targets, *frozen.outcomes,
-            info.fingerprint, args.irreversible, *host, controls, settings), 3);
+        auto execution_result = quick::run_staged(*frozen.targets, *frozen.outcomes,
+            info.fingerprint, args.irreversible, *host, controls, settings);
+        result.reporting_started = monotonic_clock::now();
+        auto report = require(std::move(execution_result), 3);
+        result.statistics = report.statistics;
         result.status = report.status;
         result.error_code = report.stopping_error.code;
         result.native_code = report.stopping_error.native_code;
         result.completed = report.completed;
         result.failed = report.failed;
         result.pending = report.unattempted;
+        for (auto& observation : result.space_observations)
+        {
+            quick::sample_space(*host, observation, false);
+        }
         for (std::size_t index = 0; index < info.target_count; ++index)
         {
             const auto outcome = require(frozen.outcomes->read(index), 4);
@@ -809,6 +948,7 @@ namespace
         }
         auto report = require(engine::run(*plan, consent, *host, store, store, controls,
             args.execution_settings, args.command == "resume" ? &saved : nullptr), 3);
+        result.reporting_started = monotonic_clock::now();
         result.status = report.status;
         result.error_code = report.stopping_error.code;
         result.native_code = report.stopping_error.native_code;
@@ -923,11 +1063,136 @@ namespace
             "\"result_schema\":\"schemas/result.schema.json\","
             "\"exit_codes\":{\"success\":0,\"admission\":2,\"partial_or_failure\":3,\"report_io\":4,\"interrupted\":5}}";
     }
+    agent::action_guidance host_guidance(const engine::host_readiness& host)
+    {
+        if (!host.platform_supported || !*host.platform_supported)
+        {
+            return {agent::next_action_kind::use_supported_host,
+                host.platform_supported ? "unsupported_platform" : "platform_observation_unknown", true};
+        }
+        if (!host.elevated)
+        {
+            return {agent::next_action_kind::reconcile_unknown, "token_observation_unknown", true};
+        }
+        if (!*host.elevated)
+        {
+            return {agent::next_action_kind::request_os_consent, "already_elevated_execution_host_required", true};
+        }
+        return {agent::next_action_kind::none, "host_ready_path_admission_still_required", true};
+    }
+
+    std::string capabilities_v2()
+    {
+        const auto host = engine::inspect_host_readiness();
+        return "{\"schema\":\"windows_agent_cleanup.capabilities.v2\",\"status\":\"capabilities\",\"version\":" +
+            agent::json_quote(secure_erase::metadata::version()) +
+            ",\"identity\":{\"version\":" + agent::json_quote(secure_erase::metadata::version()) +
+            ",\"source_commit\":" + agent::json_quote(secure_erase::metadata::source_commit()) +
+            ",\"source_commit_known\":" + (secure_erase::metadata::source_commit_known() ? "true" : "false") +
+            ",\"source_dirty\":" + (secure_erase::metadata::source_dirty() ? "true" : "false") +
+            ",\"source_dirty_known\":" + (secure_erase::metadata::source_dirty_known() ? "true" : "false") +
+            ",\"build_identity\":" + agent::json_quote(secure_erase::metadata::build_identity()) + "}," +
+            "\"supported_contract_versions\":[1,2],\"commands\":[\"scan\",\"run\",\"resume\",\"locks\",\"release\",\"status\"]," +
+            "\"modes\":[\"quick\",\"overwrite\"],\"protocol\":\"native_jsonl_manifest\"," +
+            "\"elevation\":\"caller_supplied_no_prompt\",\"physical_sanitization_guaranteed\":false," +
+            "\"manifest_schema\":\"schemas/manifest_record.schema.json\"," +
+            "\"result_schema\":\"schemas/result.v2.schema.json\"," +
+            "\"capabilities_schema\":\"schemas/capabilities.v2.schema.json\"," +
+            "\"request_status_schema\":\"schemas/request_status.v2.schema.json\"," +
+            "\"readiness\":" + readiness_json(host) + "," + agent::action_guidance_json(host_guidance(host)) +
+            ",\"exit_codes\":{\"success\":0,\"admission\":2,\"partial_or_failure\":3,\"report_io\":4,\"interrupted\":5}}";
+    }
+
+    std::string_view lookup_state_name(storage::request_lookup_state value) noexcept
+    {
+        switch (value)
+        {
+        case storage::request_lookup_state::terminal_result:
+            return "terminal_result";
+        case storage::request_lookup_state::intent_only:
+            return "intent_only";
+        case storage::request_lookup_state::no_record_observed:
+            return "no_record_observed";
+        case storage::request_lookup_state::ambiguous:
+            return "ambiguous";
+        case storage::request_lookup_state::unavailable:
+            return "unavailable";
+        case storage::request_lookup_state::inspection_incomplete:
+            return "inspection_incomplete";
+        }
+        return "unavailable";
+    }
+
+    int inspect_request(const cli::arguments& args)
+    {
+        storage::request_status status;
+        const auto path = agent::normalize_path(args.report_directory);
+        if (path)
+        {
+            status = storage::state_store::inspect_request(utf16(*path), args.request_id);
+        }
+        else
+        {
+            status.request_id = args.request_id;
+            status.observation_error = path.error();
+        }
+        std::string text = "{\"schema\":\"windows_agent_cleanup.request_status.v2\",\"request_id\":" +
+            agent::json_quote(status.request_id) + ",\"lookup_state\":" +
+            agent::json_quote(lookup_state_name(status.lookup_state)) + ",\"report_references\":[";
+        for (std::size_t index = 0; index < status.report_references.size(); ++index)
+        {
+            text += (index == 0 ? "" : ",") + agent::json_quote(status.report_references[index]);
+        }
+        const bool terminal = status.lookup_state == storage::request_lookup_state::terminal_result;
+        text += "],\"original_result\":" + status.original_result.value_or("null") +
+            ",\"error_code\":" + agent::json_quote(status.observation_error.code) +
+            ",\"native_code\":" + std::to_string(status.observation_error.native_code) + "," +
+            agent::action_guidance_json({terminal ? agent::next_action_kind::inspect_report :
+                agent::next_action_kind::reconcile_unknown,
+                terminal ? "recorded_terminal_result_not_replay_authority" : "completion_not_established_no_replay", false}) + "}";
+        std::cout << text << '\n';
+        std::cout.flush();
+        return std::cout ? (terminal ? 0 : 3) : 4;
+    }
+
+    void update_guidance(summary& result, int exit_code, bool operation_dispatched)
+    {
+        result.guidance.retry_safe = exit_code == 2 && !operation_dispatched;
+        if (exit_code == 0)
+        {
+            result.guidance.action = agent::next_action_kind::none;
+            result.guidance.reason = "recorded_result_not_replay_authority";
+        }
+        else if (result.error_code == "elevation_required")
+        {
+            result.guidance.action = agent::next_action_kind::request_os_consent;
+            result.guidance.reason = "already_elevated_execution_host_required";
+        }
+        else if (result.error_code == "unsupported_host" || result.error_code == "host_readiness_unknown")
+        {
+            result.guidance.action = agent::next_action_kind::use_supported_host;
+            result.guidance.reason = result.error_code;
+        }
+        else if (result.error_code == "token_query_failed")
+        {
+            result.guidance.action = agent::next_action_kind::reconcile_unknown;
+            result.guidance.reason = "token_observation_unknown";
+        }
+        else
+        {
+            result.guidance.action = result.guidance.retry_safe ? agent::next_action_kind::correct_input :
+                (result.report_file.empty() ? agent::next_action_kind::reconcile_unknown : agent::next_action_kind::inspect_report);
+            result.guidance.reason = result.error_code.empty() ? "inspect_final_target_outcomes" : result.error_code;
+        }
+    }
+
 }
 
 int wmain(int argc, wchar_t** argv)
 {
+    const auto invocation_started = monotonic_clock::now();
     summary result;
+    bool operation_dispatched{};
     std::unique_ptr<storage::state_store> store;
     std::unique_ptr<report_file> output;
     int exit_code{};
@@ -938,12 +1203,18 @@ int wmain(int argc, wchar_t** argv)
         {
             tokens.push_back(utf8(argv[index]));
         }
+        result.contract_version = cli::requested_contract_version(tokens);
         auto args = require(cli::parse(tokens));
+        result.contract_version = args.contract_version;
         if (args.command == "capabilities")
         {
-            std::cout << capabilities() << '\n';
+            std::cout << (args.contract_version == 2 ? capabilities_v2() : capabilities()) << '\n';
             std::cout.flush();
             return std::cout ? 0 : 4;
+        }
+        if (args.command == "status")
+        {
+            return inspect_request(args);
         }
         result.request_id = args.request_id;
         result.mode = args.command == "resume" ? "overwrite" :
@@ -955,7 +1226,12 @@ int wmain(int argc, wchar_t** argv)
         {
             fail("report_scope_overlap");
         }
-        if (!elevated())
+        result.readiness = engine::inspect_host_readiness();
+        if (args.contract_version == 2 && !result.readiness->platform_supported.value_or(false))
+        {
+            fail(result.readiness->platform_supported ? "unsupported_host" : "host_readiness_unknown");
+        }
+        if (!elevated(*result.readiness))
         {
             fail("elevation_required");
         }
@@ -972,8 +1248,9 @@ int wmain(int argc, wchar_t** argv)
             }
         }
         store = require(storage::state_store::open_at(utf16(args.report_directory), args.retention));
-        output = std::make_unique<report_file>(store->root_path(), args.request_id);
+        output = std::make_unique<report_file>(*store, args.request_id);
         result.report_file = output->path();
+        operation_dispatched = true;
         if (args.command == "locks" || args.command == "release")
         {
             process_operation(args, *store, *output, result);
@@ -982,8 +1259,9 @@ int wmain(int argc, wchar_t** argv)
         {
             if (result.mode == "quick")
             {
+                const auto preparation_started = monotonic_clock::now();
                 manifest_roots roots(args);
-                run_quick(args, *store, *output, result, roots);
+                run_quick(args, *store, *output, result, roots, preparation_started);
             }
             else
             {
@@ -1025,6 +1303,12 @@ int wmain(int argc, wchar_t** argv)
                 });
             }
         }
+        if (result.reporting_started)
+        {
+            result.reporting_before_result_ms = elapsed_ms(*result.reporting_started);
+        }
+        result.total_to_result_ms = elapsed_ms(invocation_started);
+        update_guidance(result, exit_code, operation_dispatched);
         if (output)
         {
             output->append(result.json());
@@ -1046,6 +1330,7 @@ int wmain(int argc, wchar_t** argv)
     }
     try
     {
+        update_guidance(result, exit_code, operation_dispatched);
         std::cout << result.json() << '\n';
         std::cout.flush();
         return std::cout ? exit_code : 4;

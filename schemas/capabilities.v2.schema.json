@@ -1,0 +1,368 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "windows_agent_cleanup.capabilities.v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "status",
+    "version",
+    "identity",
+    "supported_contract_versions",
+    "commands",
+    "modes",
+    "protocol",
+    "elevation",
+    "physical_sanitization_guaranteed",
+    "manifest_schema",
+    "result_schema",
+    "capabilities_schema",
+    "request_status_schema",
+    "readiness",
+    "next_action",
+    "retry_safe",
+    "exit_codes"
+  ],
+  "properties": {
+    "schema": {
+      "const": "windows_agent_cleanup.capabilities.v2"
+    },
+    "status": {
+      "const": "capabilities"
+    },
+    "version": {
+      "type": "string"
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "source_commit",
+        "source_commit_known",
+        "source_dirty",
+        "source_dirty_known",
+        "build_identity"
+      ],
+      "properties": {
+        "version": {
+          "type": "string"
+        },
+        "source_commit": {
+          "type": "string"
+        },
+        "source_commit_known": {
+          "type": "boolean"
+        },
+        "source_dirty": {
+          "type": "boolean"
+        },
+        "source_dirty_known": {
+          "type": "boolean"
+        },
+        "build_identity": {
+          "type": "string"
+        }
+      }
+    },
+    "supported_contract_versions": {
+      "const": [
+        1,
+        2
+      ]
+    },
+    "commands": {
+      "const": [
+        "scan",
+        "run",
+        "resume",
+        "locks",
+        "release",
+        "status"
+      ]
+    },
+    "modes": {
+      "const": [
+        "quick",
+        "overwrite"
+      ]
+    },
+    "protocol": {
+      "const": "native_jsonl_manifest"
+    },
+    "elevation": {
+      "const": "caller_supplied_no_prompt"
+    },
+    "physical_sanitization_guaranteed": {
+      "const": false
+    },
+    "manifest_schema": {
+      "const": "schemas/manifest_record.schema.json"
+    },
+    "result_schema": {
+      "const": "schemas/result.v2.schema.json"
+    },
+    "capabilities_schema": {
+      "const": "schemas/capabilities.v2.schema.json"
+    },
+    "request_status_schema": {
+      "const": "schemas/request_status.v2.schema.json"
+    },
+    "readiness": {
+      "$ref": "#/$defs/readiness"
+    },
+    "next_action": {
+      "$ref": "#/$defs/next_action"
+    },
+    "retry_safe": {
+      "type": "boolean",
+      "description": "This nonmutating discovery call admits no filesystem operation. This is not deletion authority; refresh host readiness in the actual execution host."
+    },
+    "exit_codes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "success",
+        "admission",
+        "partial_or_failure",
+        "report_io",
+        "interrupted"
+      ],
+      "properties": {
+        "success": {
+          "const": 0
+        },
+        "admission": {
+          "const": 2
+        },
+        "partial_or_failure": {
+          "const": 3
+        },
+        "report_io": {
+          "const": 4
+        },
+        "interrupted": {
+          "const": 5
+        }
+      }
+    }
+  },
+  "$defs": {
+    "readiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required_windows_build",
+        "required_native_architecture",
+        "required_process_architecture",
+        "observed_windows_build",
+        "native_architecture",
+        "process_architecture",
+        "platform_supported",
+        "elevated",
+        "filesystem_commands_ready",
+        "observation_errors"
+      ],
+      "properties": {
+        "required_windows_build": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "required_native_architecture": {
+          "enum": [
+            "unknown",
+            "x86",
+            "x64",
+            "arm64",
+            "arm",
+            "other"
+          ]
+        },
+        "required_process_architecture": {
+          "enum": [
+            "unknown",
+            "x86",
+            "x64",
+            "arm64",
+            "arm",
+            "other"
+          ]
+        },
+        "observed_windows_build": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "native_architecture": {
+          "enum": [
+            "unknown",
+            "x86",
+            "x64",
+            "arm64",
+            "arm",
+            "other"
+          ]
+        },
+        "process_architecture": {
+          "enum": [
+            "unknown",
+            "x86",
+            "x64",
+            "arm64",
+            "arm",
+            "other"
+          ]
+        },
+        "platform_supported": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "elevated": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "filesystem_commands_ready": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "observation_errors": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "platform",
+            "architecture",
+            "elevation"
+          ],
+          "properties": {
+            "platform": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "code",
+                    "native_code"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "native_code": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4294967295
+                    }
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "architecture": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "code",
+                    "native_code"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "native_code": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4294967295
+                    }
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "elevation": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "code",
+                    "native_code"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "native_code": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4294967295
+                    }
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "next_action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "action",
+        "reason"
+      ],
+      "properties": {
+        "action": {
+          "enum": [
+            "none",
+            "use_supported_host",
+            "request_os_consent",
+            "correct_input",
+            "inspect_report",
+            "wait_same_invocation",
+            "reconcile_unknown"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 128
+        }
+      }
+    }
+  }
+}

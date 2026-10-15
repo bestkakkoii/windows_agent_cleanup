@@ -151,8 +151,8 @@ function read_report($result, [string]$control_directory)
     }
     $records = @([System.IO.File]::ReadAllLines($path, $script:utf8) |
         ForEach-Object { $_ | ConvertFrom-Json })
-    if ($records.Count -lt 2 -or $records[-1].schema -ne 'windows_agent_cleanup.result.v1' -or
-        $records[-1].request_id -ne $result.record.request_id -or
+    if ($records.Count -lt 2 -or $records[-1].schema -notin @('windows_agent_cleanup.result.v1', 'windows_agent_cleanup.result.v2') -or
+        $records[-1].schema -ne $result.record.schema -or $records[-1].request_id -ne $result.record.request_id -or
         $records[-1].status -ne $result.record.status)
     {
         throw 'fixture_report_summary_mismatch'
@@ -217,6 +217,15 @@ namespace native_cli_fixture
         $capabilities.record.physical_sanitization_guaranteed -eq $false -and
         $capabilities.record.commands -contains 'run') 'capabilities_contract'
 
+    $capabilities_v2 = invoke_cli @('capabilities', '--contract-version', '2')
+    check ($capabilities_v2.exit_code -eq 0 -and
+        $capabilities_v2.record.schema -eq 'windows_agent_cleanup.capabilities.v2' -and
+        $capabilities_v2.record.supported_contract_versions -contains 2 -and
+        $capabilities_v2.record.commands -contains 'status' -and
+        $capabilities_v2.record.readiness.elevated -eq $true -and
+        $capabilities_v2.record.readiness.filesystem_commands_ready -eq $true -and
+        $capabilities_v2.record.identity.version -eq $capabilities.record.version) 'v2_effective_readiness_and_identity'
+
     # All targets, retained sentinels and control files are created by this test.
     $fixture_root = Join-Path ([System.IO.Path]::GetTempPath()) ('agent_cli_fixture_' + [Guid]::NewGuid().ToString('N'))
     [void][System.IO.Directory]::CreateDirectory($fixture_root)
@@ -255,6 +264,19 @@ namespace native_cli_fixture
     $reports = Join-Path $control 'reports'
     write_manifest $manifest @($single, $selected_directory)
     $common = @('--mode', 'quick', '--root', $scope, '--manifest', $manifest, '--report-dir', $reports)
+
+    $missing_reports = Join-Path $control 'not_created_by_status'
+    $missing_status = invoke_cli @('status', '--request-id', 'missing', '--report-dir', $missing_reports,
+        '--contract-version', '2')
+    check ($missing_status.exit_code -eq 3 -and
+        $missing_status.record.schema -eq 'windows_agent_cleanup.request_status.v2' -and
+        $missing_status.record.lookup_state -eq 'unavailable' -and
+        $missing_status.record.retry_safe -eq $false -and
+        -not [System.IO.Directory]::Exists($missing_reports)) 'status_never_creates_private_store'
+    $unsupported = invoke_cli (@('run', '--request-id', 'unsupported_contract') + $common +
+        @('--contract-version', '3', '--authorize-irreversible'))
+    check ($unsupported.exit_code -eq 2 -and $unsupported.record.error_code -eq 'unsupported_contract_version' -and
+        [System.IO.File]::Exists($single) -and -not [System.IO.Directory]::Exists($reports)) 'unsupported_contract_refuses_before_store_or_mutation'
 
     $rejected = invoke_cli (@('run', '--request-id', 'missing_auth') + $common)
     check ($rejected.exit_code -eq 2 -and $rejected.record.error_code -eq 'irreversible_authorization_mismatch' -and
@@ -302,6 +324,14 @@ namespace native_cli_fixture
         $again = invoke_cli (@('scan', '--request-id', 'scan_again') + $common)
         check ($again.exit_code -eq 0 -and $again.record.report_file -ne $scan.record.report_file -and
             [System.IO.File]::Exists([string]$scan.record.report_file)) 'existing_private_store_unique_report'
+
+        $duplicate_id_scan = invoke_cli (@('scan', '--request-id', 'scan_again') + $common)
+        check ($duplicate_id_scan.exit_code -eq 0 -and
+            $duplicate_id_scan.record.report_file -ne $again.record.report_file) 'request_id_is_not_implicit_idempotency'
+        $ambiguous_status = invoke_cli @('status', '--request-id', 'scan_again', '--report-dir', $reports,
+            '--contract-version', '2')
+        check ($ambiguous_status.exit_code -eq 3 -and $ambiguous_status.record.lookup_state -eq 'ambiguous' -and
+            $null -eq $ambiguous_status.record.original_result -and $ambiguous_status.record.retry_safe -eq $false) 'status_duplicate_request_id_never_chooses_newest'
 
         $bad_manifest = Join-Path $control 'malformed.jsonl'
         $valid_line = @{ path = $single } | ConvertTo-Json -Compress
@@ -385,6 +415,17 @@ namespace native_cli_fixture
             '--manifest', $link_manifest, '--report-dir', $reports)
         check ($link.exit_code -eq 3 -and $link.record.status -eq 'scan_partial' -and
             $link.record.counts.failed -eq 1 -and [System.IO.File]::Exists($sentinel)) 'reparse_target_scan_partial_no_traversal'
+        $link_v2 = invoke_cli @('scan', '--mode', 'quick', '--request-id', 'reparse_scan_v2', '--root', $scope,
+            '--manifest', $link_manifest, '--report-dir', $reports, '--contract-version', '2')
+        check ($link_v2.exit_code -eq 3 -and $link_v2.record.statistics.failed -eq 1 -and
+            $link_v2.record.statistics.pending -eq 0 -and $link_v2.record.statistics.final_failures.reparse -eq 1 -and
+            $link_v2.record.statistics.failed -eq $link_v2.record.counts.failed -and
+            [System.IO.File]::Exists($sentinel)) 'v2_advisory_preparation_failures_reconcile_once'
+        $link_v2_status = invoke_cli @('status', '--request-id', 'reparse_scan_v2', '--report-dir', $reports,
+            '--contract-version', '2')
+        check ($link_v2_status.exit_code -eq 0 -and $link_v2_status.record.lookup_state -eq 'terminal_result' -and
+            $link_v2_status.record.original_result.status -eq 'scan_partial' -and
+            $link_v2_status.record.retry_safe -eq $false) 'status_preserves_failed_advisory_result'
         $link_records = @(read_report $link $control)
         check (@($link_records | Where-Object { $_.schema -eq 'windows_agent_cleanup.scan_target.v1' }).Count -eq 1) 'reparse_descendants_not_enumerated'
         $root_manifest = Join-Path $control 'junction_root.jsonl'
@@ -408,15 +449,84 @@ namespace native_cli_fixture
         check ($run_records[-1].counts.completed -eq 5 -and
             @($run_records | Where-Object { $_.schema -eq 'windows_agent_cleanup.failure.v1' }).Count -eq 0) 'external_report_agrees_with_stdout'
 
+        $v2_tree = Join-Path $scope 'v2_metrics'
+        $v2_nested = Join-Path $v2_tree 'nested'
+        $v2_empty = Join-Path $v2_tree 'empty'
+        foreach ($directory in @($v2_tree, $v2_nested, $v2_empty))
+        {
+            [void][System.IO.Directory]::CreateDirectory($directory)
+        }
+        [System.IO.File]::WriteAllText((Join-Path $v2_tree 'one.txt'), '123456789012', $script:utf8)
+        [System.IO.File]::WriteAllText((Join-Path $v2_nested 'two.txt'), '123456789012345', $script:utf8)
+        $v2_manifest = Join-Path $control 'v2.jsonl'
+        write_manifest $v2_manifest @($v2_tree)
+        $v2_common = @('--mode', 'quick', '--root', $scope, '--manifest', $v2_manifest,
+            '--report-dir', $reports, '--contract-version', '2')
+        $v2_scan = invoke_cli (@('scan', '--request-id', 'v2_scan') + $v2_common)
+        check ($v2_scan.exit_code -eq 0 -and $v2_scan.record.schema -eq 'windows_agent_cleanup.result.v2' -and
+            $v2_scan.record.statistics.selected.files -eq 2 -and
+            $v2_scan.record.statistics.selected.directories -eq 3 -and
+            $v2_scan.record.statistics.logical_bytes.selected -eq 27 -and
+            $v2_scan.record.statistics.remove_attempted.files -eq 0 -and
+            $null -eq $v2_scan.record.phases_ms.first_pass_ms -and
+            [System.IO.Directory]::Exists($v2_tree)) 'v2_scan_shared_snapshot_statistics_no_removal'
+        $v2_scan_status = invoke_cli @('status', '--request-id', 'v2_scan', '--report-dir', $reports,
+            '--contract-version', '2')
+        check ($v2_scan_status.exit_code -eq 0 -and $v2_scan_status.record.lookup_state -eq 'terminal_result' -and
+            $v2_scan_status.record.original_result.advisory -eq $true -and
+            $v2_scan_status.record.original_result.statistics.pending -eq 0 -and
+            $v2_scan_status.record.retry_safe -eq $false) 'status_preserves_advisory_scan_statistics'
+        $v2_run = invoke_cli (@('run', '--request-id', 'v2_run') + $v2_common + @('--authorize-irreversible'))
+        check ($v2_run.exit_code -eq 0 -and $v2_run.record.schema -eq 'windows_agent_cleanup.result.v2' -and
+            $v2_run.record.counts.completed -eq 5 -and
+            $v2_run.record.statistics.selected.files -eq 2 -and
+            $v2_run.record.statistics.selected.directories -eq 3 -and
+            $v2_run.record.statistics.remove_attempted.files -eq 2 -and
+            $v2_run.record.statistics.remove_attempted.directories -eq 3 -and
+            $v2_run.record.statistics.completed.files -eq 2 -and
+            $v2_run.record.statistics.completed.directories -eq 3 -and
+            $v2_run.record.statistics.logical_bytes.selected -eq 27 -and
+            $v2_run.record.statistics.logical_bytes.completed -eq 27 -and
+            $v2_run.record.statistics.logical_bytes.completed_unknown -eq 0 -and
+            $v2_run.record.retry_safe -eq $false -and
+            $v2_run.record.phases_ms.first_pass_ms -ge 0 -and
+            $v2_run.record.phases_ms.total_to_result_ms -ge $v2_run.record.phases_ms.first_pass_ms -and
+            $v2_run.record.space_observations.semantics -eq 'observed_available_to_caller_not_attributed_reclaim' -and
+            -not [System.IO.Directory]::Exists($v2_tree)) 'v2_run_shared_unique_counts_bytes_and_phase_boundaries'
+        $v2_records = @(read_report $v2_run $control)
+        check ($v2_records[-1].statistics.logical_bytes.completed -eq 27 -and
+            $v2_records[-1].phases_ms.total_to_result_ms -eq $v2_run.record.phases_ms.total_to_result_ms) 'v2_final_report_matches_compact_result'
+        $terminal = invoke_cli @('status', '--request-id', 'v2_run', '--report-dir', $reports,
+            '--contract-version', '2')
+        check ($terminal.exit_code -eq 0 -and $terminal.record.lookup_state -eq 'terminal_result' -and
+            $terminal.record.original_result.job_id -eq $v2_run.record.job_id -and
+            $terminal.record.original_result.plan_fingerprint -eq $v2_run.record.plan_fingerprint -and
+            $terminal.record.original_result.statistics.logical_bytes.completed -eq 27 -and
+            $terminal.record.retry_safe -eq $false) 'status_reads_bound_v2_terminal_result_without_replay'
+        $legacy_terminal = invoke_cli @('status', '--request-id', 'mixed_run', '--report-dir', $reports,
+            '--contract-version', '2')
+        check ($legacy_terminal.exit_code -eq 0 -and
+            $legacy_terminal.record.original_result.schema -eq 'windows_agent_cleanup.result.v1' -and
+            $legacy_terminal.record.retry_safe -eq $false) 'status_preserves_v1_original_result'
+        $unobserved = invoke_cli @('status', '--request-id', 'never_invoked', '--report-dir', $reports,
+            '--contract-version', '2')
+        check ($unobserved.exit_code -eq 3 -and $unobserved.record.lookup_state -eq 'no_record_observed' -and
+            $unobserved.record.retry_safe -eq $false) 'missing_record_cannot_prove_no_mutation'
+
         $partial_file = Join-Path $scope 'partial.txt'
         [System.IO.File]::WriteAllText($partial_file, 'disposable', $script:utf8)
         $partial_manifest = Join-Path $control 'partial.jsonl'
         write_manifest $partial_manifest @($partial_file, (Join-Path $scope 'never_created.txt'))
         $partial = invoke_cli @('run', '--mode', 'quick', '--request-id', 'partial_run', '--root', $scope,
-            '--manifest', $partial_manifest, '--report-dir', $reports, '--authorize-irreversible')
+            '--manifest', $partial_manifest, '--report-dir', $reports, '--authorize-irreversible', '--contract-version', '2')
         check ($partial.exit_code -eq 3 -and $partial.record.status -eq 'partial_failure' -and
             $partial.record.counts.targets -eq 2 -and $partial.record.counts.completed -eq 1 -and
             $partial.record.counts.failed -eq 1 -and -not [System.IO.File]::Exists($partial_file)) 'partial_failure_is_not_success'
+        check ($partial.record.statistics.completed.files -eq 1 -and
+            $partial.record.statistics.selected.unclassified -eq 1 -and
+            $partial.record.statistics.logical_bytes.selected_unknown -eq 1 -and
+            $partial.record.statistics.final_failures.other -eq 1 -and
+            $partial.record.retry_safe -eq $false -and $partial.record.next_action.action -eq 'inspect_report') 'v2_partial_failure_unknown_type_and_final_category'
         $partial_records = @(read_report $partial $control)
         check (@($partial_records | Where-Object { $_.schema -eq 'windows_agent_cleanup.failure.v1' }).Count -eq 1) 'partial_failure_external_evidence'
         $exit_code = 0

@@ -15,7 +15,15 @@
     "mcp": false,
     "universal_agent_entry": "README_AI.md",
     "skills": "optional complete portable procedural bundle with progressive disclosure",
-    "tool_location": "Agent-selected suitable absolute location; derive from actual README/Skill root, not an example drive or parent directory"
+    "tool_location": "Agent-selected suitable absolute location; derive from actual README/Skill root, not an example drive or parent directory",
+    "operator_adoption": "Official Release Windows x64 runtime ZIP plus verified release-record checksum before extraction; source clone/archive/build only for explicit engineering",
+    "source_contract_versions": [
+      1,
+      2
+    ],
+    "published_v2_0_0_contract_versions": [
+      1
+    ]
   },
   "invariants": [
     "whole-batch membership frozen before deletion",
@@ -148,5 +156,17 @@
       "json_jsonl_yaml": "UTF-8 without BOM",
       "bat": "ASCII CRLF bootstrap; UTF-8 subset"
     }
+  },
+  "production_agent_source_changes": {
+    "authority": "Owner-supplied production Agent change specification and Release-first adoption amendment, 2026-10-16 Asia/Taipei",
+    "status": "implemented_pending_exact_revision_native_evidence_review",
+    "operation_kernel": "skills/project-cleanup/SKILL.md; <=50 body lines; conditional references; reuse known scope/plan/authority",
+    "readiness": "Opt-in v2 shared nonmutating effective-token/Windows/architecture observation; unknown values retain diagnostics",
+    "quick_statistics": "Shared checked unique namespace counts and default-stream snapshot lengths, explicit unknown counts, final failure categories and monotonic phases",
+    "request_status": "Opt-in v2 strictly read-only bounded existing private report lookup; no creation, execution, replay or Quick resume",
+    "runtime_packaging": "scripts/package_runtime.py; engineering-only approved unchanged binaries, canonical operator bundle and truthful hash-bound build/provenance metadata",
+    "v1_contract": "Default output shape and exits retained; original result and manifest schemas unchanged",
+    "published_asset": "Existing v2.0.0 bytes and provenance unchanged; new source interfaces require a separately authorized future distribution",
+    "design": "docs/design.md#production-agent-contracts-in-source"
   }
 }

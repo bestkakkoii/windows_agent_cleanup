@@ -9,6 +9,7 @@ export namespace secure_erase::cli
     struct arguments
     {
         std::string command{"capabilities"};
+        std::uint32_t contract_version{1};
         std::string mode;
         std::string request_id;
         std::string root;
@@ -30,6 +31,7 @@ export namespace secure_erase::cli
         engine::options execution_settings;
     };
 
+    [[nodiscard]] std::uint32_t requested_contract_version(std::span<const std::string> tokens) noexcept;
     [[nodiscard]] engine::result<arguments> parse(std::span<const std::string> tokens);
     [[nodiscard]] int report_exit_code(std::string_view status) noexcept;
 }

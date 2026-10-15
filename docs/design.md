@@ -76,24 +76,52 @@ Owner GUI quick/overwrite smoke results and a successful 2,890-file CLI Quick pi
 
 Normal RC/Release owner-evidence and review gates remain in force for later versions. The first-distribution exception neither marks untested configurations passed nor authorizes another publication. End-to-end measurements, rather than a universal maximum-speed claim, determine performance conclusions.
 
-## Open Agent integration improvements
+## Production Agent contracts in source
 
-The owner-reported pilot identifies observability and onboarding opportunities,
-without establishing a native defect. These are proposals, not current features:
+Ordinary adoption downloads the official Release's Windows x64 runtime asset,
+verifies its release-record checksum before extraction and binds an Agent-chosen
+portable directory. Generated source archives and compilation belong to explicit
+engineering work. The small absolute-path README routes operators to the sole
+Skill kernel; reuse known plan/scope/authority and load references conditionally.
+The published v2.0.0 bundle retains its original v1 interfaces and instructions.
 
-- Prioritize selected/successful file and directory counts, logical-byte totals,
-  phase durations with explicit units, and effective-token discovery before batch
-  preparation. Separate logical size from allocation observations.
-- Choose an explicit result-schema evolution contract before adding stdout
-  metrics or bounded failure-code aggregates: result.v1 rejects additional
-  properties. Preserve its strict consumers rather than silently extending v1.
-- Evaluate a concise authorized-Quick procedure and a maintained PowerShell
-  5.1/7 example with consistent enumeration, BOM-free manifests, immutable
-  intent/receipts and no automatic mutation replay. Measure current onboarding
-  before claiming context savings; the report measured older release docs.
-- Obtain exact-binary frozen-membership race evidence and source/build-to-binary
-  provenance for future releases. Instrument startup, preparation, execution,
-  recovery and report commit before changing performance heuristics.
+New source supports explicit `--contract-version 2`; omission retains v1 output
+shape and exits. V2 capabilities observes the current effective token, numeric
+Windows build and native/process architecture without target admission or store
+creation. Unknown observations carry errors rather than invented false values.
+Refresh readiness after an actual execution-host change; neither installation
+nor host readiness grants cleanup authority. Hash-bound runtime manifests
+advertise supported contracts; legacy/unadvertised bundles remain on v1.
+
+Quick core statistics count unique frozen namespace selections, actual backend
+remove calls and final successful removals, including recovery only once. Known
+bytes are default-stream logical lengths captured during preparation; unknown
+length/type counts remain explicit. They are not allocated or reclaimed bytes.
+Checked totals, new staging/outcome formats and fingerprints bind the added
+metadata, and complete admission reserves bounded statistics/report capacity.
+CLI/GUI consume these shared statistics and the same at-most-128-volume space
+observation helper. V2 distinguishes streamed preparation, freezing, first pass,
+recovery and pre-result reporting wall times; unmeasured fields are null.
+The total ends before final report/stdout delivery and process teardown.
+
+V2 `status` inspects existing request-prefixed private reports read-only. It does
+not open/create the execution store, mutate retention, acquire the writer lock,
+select targets or restore Quick scratch. Bounded enumeration/read limits, unsafe
+ACLs/reparses, changing evidence and multiple matches produce explicit unknown,
+unavailable, incomplete or ambiguous states. A validated terminal record preserves
+its original result; no lookup state authorizes replay or implies exactly-once
+execution. Report creation uses the store's explicit private owner/ACL policy.
+
+Future runtime packaging copies supplied approved EXE bytes and canonical Skill
+content, renders only distribution routing, and records actual hashes, PE/build
+identity and provenance. Source and runtime archive contracts remain separate;
+neither a successful package check nor CI grants publication permission.
+These source changes require their own build/runtime evidence and are not
+retroactively present in the published owner binaries.
+
+Exact-binary frozen-membership race evidence, full hardware coverage and
+attributable allocation-release measurements remain open. Scheduling changes
+should follow phase measurements; no universal maximum-speed claim is made.
 
 ## Source encoding
 

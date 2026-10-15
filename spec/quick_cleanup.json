@@ -8,7 +8,9 @@
     "gui": "Minimal ImGui/Win32/DX11 controls using the same protected adaptive core",
     "agent_entry": "README_AI.md; optional complete portable project-cleanup Skill with progressive disclosure for Codex/Claude and other Agents",
     "cli_default": "capabilities; scan is explicit. Quick scan is advisory; overwrite scan can retain a protected resumable plan. Authorized run can prepare and execute one scoped manifest request",
-    "reports": "One compact stdout JSON summary and external detailed records; requested private reports may contain paths, unlike masked retained event logs and bounded GUI diagnostics"
+    "reports": "One compact stdout JSON summary and external detailed records; requested private reports may contain paths, unlike masked retained event logs and bounded GUI diagnostics",
+    "operator_adoption": "Verified official runtime Release ZIP; no automatic source checkout or compilation during cleanup",
+    "contracts": "Unversioned v1 preserved; explicit --contract-version 2 opts into readiness, shared aggregates/phase/space observations and typed guidance; published v2.0.0 remains v1"
   },
   "cleanup_plans": [
     "default autonomous cleanup with positive disposability evidence",
@@ -36,7 +38,9 @@
     "system_protection": "Core-enforced fail-closed nofollow and fresh identity/protection checks; exact running EXE/module identities and containing ancestors protected, unrelated siblings permitted; OS/service/boot/private-state tree rules remain",
     "resource_loss": "Later resource loss or device faults can stop an admitted job after partial deletion; retain quick_not_attempted provenance and a separate stopping_error; never silently truncate or rescan",
     "resident_bound": "Target strings/outcomes are file-backed; compact dependency metadata remains proportional to target count and can exceed admission. Engine budgets are not a total process RSS guarantee",
-    "resource_observations": "CPU/queue/handle availability are conservative observations or estimates, not reserved OS capacity or proof of optimal hardware throughput"
+    "resource_observations": "CPU/queue/handle availability are conservative observations or estimates, not reserved OS capacity or proof of optimal hardware throughput",
+    "statistics": "Core-owned unique selected/remove-attempted/completed files/directories/unclassified counts; checked known default-stream snapshot byte sums and unknown-size counts; final failures once after recovery",
+    "request_status": "Read-only bounded v2 lookup of existing private request reports; ambiguous/missing/partial evidence is not replay or Quick resume authority"
   },
   "semantics": {
     "quick": "Permanent logical namespace deletion; no payload overwrite/readback or secure-erasure promise; identity and protection checks still apply",

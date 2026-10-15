@@ -30,7 +30,11 @@ struct test_results
     {
         identity = "id:" + path;
     }
-    return {std::move(path), std::move(identity), std::move(device), 123, 0, directory, {}};
+    quick::target value{std::move(path), std::move(identity), std::move(device), 123, 0, directory, {}};
+    value.type_known = true;
+    value.logical_size_known = true;
+    value.logical_size_bytes = directory ? 0 : 13;
+    return value;
 }
 
 [[nodiscard]] quick::plan frozen(std::vector<quick::target> targets)
@@ -73,6 +77,8 @@ public:
     bool fail_query{};
     bool fail_close{};
     bool close_device_fault{};
+    bool fail_space{};
+    bool mismatched_space{};
     std::mutex mutex;
 
     void add(const quick::plan& plan)
@@ -137,7 +143,11 @@ public:
     engine::result<quick::space_sample> sample_space(std::string_view volume_key) override
     {
         ++space_samples;
-        return quick::space_sample{std::string(volume_key), 42, 42, 100};
+        if (fail_space)
+        {
+            return std::unexpected(engine::error{"fixture_space_unavailable", 5});
+        }
+        return quick::space_sample{mismatched_space ? "another_volume" : std::string(volume_key), 42, 42, 100};
     }
 
     engine::result<void> remove(const quick::target& target, bool recover_access) override
@@ -253,6 +263,9 @@ public:
             const auto& value = targets[position];
             quick::target_index index;
             index.allocated_bytes = value.allocated_bytes;
+            index.logical_size_bytes = value.logical_size_bytes;
+            index.logical_size_known = value.logical_size_known;
+            index.type_known = value.type_known;
             index.directory = value.directory;
             index.preparation_failed = !value.preparation_error.code.empty();
             if (!value.device_key.empty())
@@ -843,6 +856,10 @@ int main()
             host.records.at("/healthy/c").deleted, "device_fault_stops_only_that_volume");
         results.check(report && report->targets[1].code == "quick_device_stopped" && host.queries == 0,
             "device_skips_are_explicit_and_never_recovered");
+        results.check(report && report->statistics.remove_attempted.files == 2 &&
+            report->statistics.remove_attempted.directories == 0 && report->statistics.failed == 3 &&
+            report->statistics.final_failures.resource == 2,
+            "statistics_device_admission_refusals_are_failures_without_backend_attempts");
     }
     {
         test_backend host;
@@ -1448,6 +1465,10 @@ int main()
         const auto resumed = quick::run_staged(storage, storage, base.fingerprint, true, host, control, {1, true}, {}, true);
         results.check(resumed && resumed->completed == 2 && host.records.at(first.path).attempts == 1,
             "staged_pause_retry_reuses_completed_names_without_reopening_them");
+        results.check(resumed && resumed->statistics.remove_attempted.files == 2 &&
+            resumed->statistics.completed.files == 2 && resumed->statistics.logical_bytes.completed == 26 &&
+            resumed->statistics.pending == 0,
+            "statistics_staged_retry_retains_unique_backend_attempt_and_completion_evidence");
     }
     {
         auto rejected = first;
@@ -1504,6 +1525,116 @@ int main()
         results.check(report && report->status == "partial_failure" && report->completed == 2 &&
             report->stopping_error.code == "quick_progress_observer_failed" && host.finishes == 1,
             "staged_late_observer_exception_preserves_complete_namespace_evidence");
+    }
+    {
+        auto file = make_target("/statistics/file");
+        file.logical_size_bytes = 27;
+        auto directory = make_target("/statistics/dir", true);
+        quick::target unknown;
+        unknown.path = "/statistics/unknown";
+        unknown.preparation_error = {"system_protection_denied", 5};
+        const auto plan = frozen({file, file, directory, unknown});
+        test_backend host;
+        host.add(plan);
+        host.records.at(file.path).readonly = true;
+        engine::control control;
+        const auto report = execute(plan, host, control, {}, nullptr, {1, true});
+        results.check(report && report->statistics.supported &&
+            report->statistics.selected.files == 1 && report->statistics.selected.directories == 1 &&
+            report->statistics.selected.unclassified == 1 &&
+            report->statistics.logical_bytes.selected == 27 && report->statistics.logical_bytes.selected_unknown == 1,
+            "statistics_selected_unique_names_types_and_known_snapshot_lengths");
+        results.check(report && host.records.at(file.path).attempts == 2 &&
+            report->statistics.remove_attempted.files == 1 && report->statistics.remove_attempted.directories == 1 &&
+            report->statistics.remove_attempted.unclassified == 0 &&
+            report->statistics.completed.files == 1 && report->statistics.completed.directories == 1 &&
+            report->statistics.logical_bytes.remove_attempted == 27 && report->statistics.logical_bytes.completed == 27 &&
+            report->statistics.failed == 1 && report->statistics.pending == 0 &&
+            report->statistics.final_failures.scope_protection == 1 &&
+            report->statistics.final_failures.access_lock == 0,
+            "statistics_backend_attempts_unique_and_recovery_failures_not_final");
+        results.check(report && report->statistics.first_pass_ms.has_value() &&
+            *report->statistics.first_pass_ms >= 0 && report->statistics.recovery_ms.has_value() &&
+            *report->statistics.recovery_ms >= 0,
+            "statistics_core_phase_clocks_have_monotonic_wall_boundaries");
+        staged_fixture storage(plan);
+        const auto selected = quick::summarize_selection(storage);
+        results.check(selected && selected->selected.files == 1 && selected->selected.directories == 1 &&
+            selected->selected.unclassified == 1 && selected->logical_bytes.selected == 27 &&
+            selected->logical_bytes.selected_unknown == 1 && selected->pending == 0 &&
+            selected->failed == 1 && selected->final_failures.scope_protection == 1 &&
+            selected->final_failures.access_lock == 0 && selected->completed.files == 0 &&
+            selected->remove_attempted.files == 0 && !selected->first_pass_ms && storage.loads == 1,
+            "statistics_advisory_scan_classifies_frozen_preparation_refusal_without_execution_pending");
+        test_backend staged_host;
+        staged_host.add(plan);
+        staged_host.records.at(file.path).readonly = true;
+        const auto staged = quick::run_staged(storage, storage, plan.fingerprint, true,
+            staged_host, control, {1, true});
+        results.check(staged && staged->statistics.selected.files == report->statistics.selected.files &&
+            staged->statistics.selected.unclassified == report->statistics.selected.unclassified &&
+            staged->statistics.remove_attempted.files == report->statistics.remove_attempted.files &&
+            staged->statistics.logical_bytes.completed == report->statistics.logical_bytes.completed &&
+            staged->statistics.final_failures.scope_protection == 1,
+            "statistics_resident_and_staged_execution_share_one_aggregate_authority");
+    }
+    {
+        auto first_large = make_target("/overflow/a");
+        first_large.logical_size_bytes = std::numeric_limits<std::uint64_t>::max();
+        auto second_large = make_target("/overflow/b");
+        second_large.logical_size_bytes = 1;
+        const auto plan = frozen({first_large, second_large});
+        test_backend host;
+        host.add(plan);
+        engine::control control;
+        const auto report = execute(plan, host, control);
+        results.check(!report && report.error().code == "quick_statistics_size_overflow" && host.events.empty(),
+            "statistics_logical_sum_overflow_refuses_complete_batch_before_removal");
+        staged_fixture storage(plan);
+        const auto staged = quick::run_staged(storage, storage, plan.fingerprint, true, host, control);
+        results.check(!staged && staged.error().code == "quick_statistics_size_overflow" && host.events.empty(),
+            "statistics_staged_overflow_refuses_complete_batch_before_removal");
+    }
+    {
+        test_backend host;
+        std::vector<std::string> volumes{"", "volume:0", "volume:0"};
+        for (std::size_t index = 1; index < 130; ++index)
+        {
+            volumes.push_back("volume:" + std::to_string(index));
+        }
+        auto [observations, truncated] = quick::begin_space_observations(host, volumes);
+        results.check(truncated && observations.size() == 128 && host.space_samples == 128 &&
+            observations.front().volume_key == "volume:0" && observations.front().before.has_value(),
+            "shared_space_observation_deduplicates_frozen_volumes_and_caps_at_128");
+        quick::sample_space(host, observations.front(), false);
+        results.check(observations.front().after && observations.front().after->available_to_caller == 42 &&
+            host.space_samples == 129 && host.events.empty(),
+            "shared_space_observation_never_removes_or_attributes_reclamation");
+        host.fail_space = true;
+        quick::sample_space(host, observations.front(), false);
+        results.check(!observations.front().after && observations.front().before &&
+            observations.front().after_error.code == "fixture_space_unavailable" &&
+            observations.front().after_error.native_code == 5,
+            "shared_space_failure_keeps_unknown_after_value_and_native_diagnostic");
+        host.fail_space = false;
+        host.mismatched_space = true;
+        quick::sample_space(host, observations.front(), true);
+        results.check(!observations.front().before &&
+            observations.front().before_error.code == "quick_space_volume_mismatch",
+            "shared_space_rejects_observation_of_a_different_volume");
+    }
+    {
+        const auto plan = frozen({make_target("/failure/a"), make_target("/failure/b")});
+        test_backend host;
+        host.add(plan);
+        host.records.at("/failure/a").errors = {{"reparse_ancestor_denied", 5}};
+        host.records.at("/failure/b").errors = {{"quick_frozen_identity_changed", 5}};
+        engine::control control;
+        const auto report = execute(plan, host, control, {}, nullptr, {1, true});
+        results.check(report && report->statistics.failed == 2 &&
+            report->statistics.final_failures.reparse == 1 && report->statistics.final_failures.identity == 1 &&
+            report->statistics.final_failures.access_lock == 0 && report->stopping_error.code.empty(),
+            "final_failure_categories_preserve_reparse_identity_and_separate_empty_stopping_error");
     }
     std::cout << "{\"summary\":true,\"suite\":\"quick_delete\",\"total\":" << results.total <<
         ",\"passed\":" << results.passed << ",\"failed\":" << results.total - results.passed << "}\n";

@@ -143,7 +143,10 @@ public:
                 terminal(index);
             }
         }
-        run_report report{plan_.job_id, "completed", std::move(results_)};
+        run_report report;
+        report.job_id = plan_.job_id;
+        report.status = "completed";
+        report.targets = std::move(results_);
         if (controls_.request.load() == control_request::pause)
         {
             report.status = "paused";

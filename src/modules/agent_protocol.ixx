@@ -5,6 +5,28 @@ export import secure_erase.model;
 
 export namespace secure_erase::agent
 {
+    enum class next_action_kind : std::uint8_t
+    {
+        none,
+        use_supported_host,
+        request_os_consent,
+        correct_input,
+        inspect_report,
+        wait_same_invocation,
+        reconcile_unknown
+    };
+
+    struct action_guidance
+    {
+        next_action_kind action{next_action_kind::none};
+        std::string reason;
+        bool retry_safe{};
+    };
+
+    [[nodiscard]] std::string_view next_action_name(next_action_kind value) noexcept;
+    [[nodiscard]] std::string action_guidance_json(const action_guidance& value);
+    [[nodiscard]] std::string statistics_json(const engine::operation_statistics& value);
+
     struct manifest_entry
     {
         std::string path;

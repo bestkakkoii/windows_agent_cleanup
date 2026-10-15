@@ -1,66 +1,105 @@
-﻿# Results and recovery
+﻿# Results and reconciliation
 
-## Complete a running job
+[Quick kernel](../SKILL.md) owns routine invocation/completion checks. Load this
+reference for detailed fields, filtered failure evidence or uncertain outcomes.
 
-Wait through the host's existing process/session API for the same invocation.
-A yielded tool call is not a failed batch and is never a reason to issue a
-second deletion. Ctrl+C requests bounded cooperative cancellation and a final
-summary when possible; completed deletions remain completed.
+- [Result details](#result-details)
+- [Opt-in v2 details](#opt-in-v2-details)
+- [Partial, missing or unknown completion](#partial-missing-or-unknown-completion)
 
-The CLI writes exactly one final compact JSON object to stdout, with no banner
-or per-target progress stream. Detailed JSONL evidence lives in its protected
-report store; intent is flushed before mutation. Stderr is diagnostic, not the
-completion contract. Match `request_id` when present, then interpret status,
-counts and exit code together. Argument failures can precede identifier binding.
+## Result details
 
-| Exit | Meaning |
+The final stdout object is compact; stderr is diagnostic. Reports are protected
+JSONL, with intent flushed before mutation. Argument errors may precede request
+binding; privilege errors may precede report creation. A `windows_agent_cleanup.result.v1`
+object contains `request_id`, `job_id`, `plan_fingerprint`, `mode`, `status`,
+`counts` (`targets`, `completed`, `failed`, `pending`), `error_code`,
+`native_code`, `report_file`, `resumable`, `advisory`. Read
+`<tool_root>/schemas/result.schema.json` only for integration/schema mismatch.
+Preserve original JSON integer precision. A scan is advisory; its discovered
+counts and `scan_partial` status never indicate removals or bind a later run.
+
+Run reports omit successful path lists. Filter `windows_agent_cleanup.failure.v1`
+rows by the relevant target/error rather than loading every path. Rows include
+namespace/identity, precise error/native code and `deleted`; `deleted:true`
+can accompany a later audit/checkpoint failure. That is neither a completed job
+nor evidence that the old target is available to retry. An empty top-level
+stopping error can coexist with per-target failures.
+
+Both scan modes emit `windows_agent_cleanup.scan_target.v1`. Quick rows contain
+`path`, `target_key`, `directory`, `error_code`, `native_code`; overwrite rows
+contain `path`, `identity`, `capability`, `downgrade_required`, `link_count`.
+Names may be extended canonical Windows paths/expanded short names. Preserve
+the exact name/key pair; do not match by basename, guessed case folding or file
+ID alone. V1 has no file/directory split, logical-byte total or phase timers;
+do not invent those from combined counters or process wall time.
+
+## Opt-in v2 details
+
+Only a bound executable advertising support accepts v2; see conditional
+[version negotiation](bulk_cli.md#version-negotiation). Published v2.0.0 remains
+v1. A v2 operation uses `windows_agent_cleanup.result.v2`; its schema is
+`schemas/result.v2.schema.json`. Default v1 shape and exits remain unchanged.
+V2 adds typed readiness, `next_action`/`retry_safe` and these measurements:
+
+| Field | Interpretation |
 |---|---|
-| `0` | Completed, scanned or capability query; check the returned status. |
-| `2` | Arguments, admission or privilege rejected. |
-| `3` | Partial/core/audit failure, including `scan_partial`. |
-| `4` | Output or report-write failure. |
-| `5` | Interrupted. |
+| `statistics.selected/remove_attempted/completed` | Unique frozen namespace entries split into files/directories/unclassified; native remove retries do not multiply attempts or recovery successes. |
+| `statistics.logical_bytes` | Known default-stream lengths at freeze, plus selected/attempted/completed unknown-size counts. Directories contribute zero; these are neither ADS totals nor allocation/reclaimed bytes. Preserve uint64 integer precision. |
+| `statistics.final_failures` | Bounded final category counts after recovery, distinct from the top-level stopping error; recovered attempts are not final failures. |
+| `phases_ms.manifest_preparation_ms` / `freeze_ms` | Monotonic wall times for streamed manifest/preparation and finalization/freeze. |
+| `phases_ms.first_pass_ms` / `recovery_ms` | Core-owned phase wall times, not summed worker durations. Unentered/unmeasured phases are null. |
+| `phases_ms.reporting_before_result_ms` / `total_to_result_ms` | Reporting before final construction, and wmain entry to final construction; both exclude final report/stdout delivery and process teardown. Neither is pure deletion/process wall time. |
+| `space_observations` | At most 128 eligible frozen volumes, with truncation/error/unknown state; before/after/delta available-to-caller bytes are observations, not attributable reclamation. |
 
-Operation results use `windows_agent_cleanup.result.v1`, with `request_id`,
-`job_id`, `plan_fingerprint`, `mode`, `status`, `counts` (`targets`, `completed`,
-`failed`, `pending`), `error_code`, `native_code`, `report_file`, `resumable` and
-`advisory`. Scan counters describe discovery, not completed deletions;
-`scan_partial` never means deletion occurred. Read the full canonical schema at
-`<tool_root>/schemas/result.schema.json` only for protocol integration or a
-schema mismatch. Do not infer success from an empty error string, a removed
-path, an exit code alone or missing terminal output.
+Unsupported overwrite statistics/core-phase/space measurements are null rather
+than invented zeros. `next_action.action` is one of `none`, `use_supported_host`,
+`request_os_consent`, `correct_input`, `inspect_report`, `wait_same_invocation`,
+`reconcile_unknown`, with a bounded reason. `retry_safe:true` requires positive
+pre-operation refusal evidence; it never grants new cleanup authority.
 
-Summarize totals, preserved uncertainty and material failures. Run reports omit
-successful path lists; `windows_agent_cleanup.failure.v1` records include the
-namespace/identity, error and `deleted` flag. A failure record can have
-`deleted: true` when a later audit/checkpoint step failed; do not treat that as
-a completed job or assume the original object remains available for retry.
-
-Both scan modes emit `windows_agent_cleanup.scan_target.v1`. Quick records carry
-`path`, `target_key`, `directory`, `error_code` and `native_code`; overwrite
-records carry `path`, `identity`, `capability`, `downgrade_required` and
-`link_count`. Accepted paths use the frozen canonical Windows namespace and may
-have an extended prefix or expanded short-name spelling. Preserve the returned
-name/key pairing; do not match by basename, guessed case folding or file ID
-alone. Filter detailed failures instead of reading all paths into context.
+If capabilities v2 advertises `status`, the separate read-only reconciliation
+command is `status --request-id <original_id> --report-dir <original_store> --contract-version 2`. It accepts no root/manifest/irreversible grant and never
+creates a store, launches a worker or resumes Quick. Its
+`windows_agent_cleanup.request_status.v2` result reports `terminal_result`,
+`intent_only`, `no_record_observed`, `ambiguous`, `unavailable` or
+`inspection_incomplete`, bounded report references and an optional unmodified
+original result. Inspect `schemas/request_status.v2.schema.json` only for
+integration. All lookup results have `retry_safe:false`; no record is not
+proof of no execution, and multiple matches do not select the newest.
 
 ## Partial, missing or unknown completion
 
-Crash, forced termination, lost stdout or missing final evidence leaves
-unknown/partial completion. Reconcile the original request's intent/result
-reports before any next deletion. Quick scratch files vanish when handles
-close: quick mode has no cross-process `resume`, and its reports do not rebuild
-safe frozen membership. Do not automatically rescan or replay the old manifest;
-that could select new files or replacements. Present unresolved state and obtain
-any new scope/plan choice needed for a fresh batch.
+| Evidence available | Read-only caller behavior |
+|---|---|
+| Same invocation still owned by the host | Wait on that process/session; a yielded call is not a new execution opportunity. |
+| Matching final JSON and final report | Interpret exit/status/counts together and retain request/job/fingerprint binding; read relevant failure rows. |
+| Lost stdout; known private report directory/request ID | Inspect only that directory for exact validated request-ID prefix plus `.report.jsonl` suffix. Random report suffixes mean multiple matches are ambiguous; never choose newest. Read original intent/final rows without selecting fresh targets. |
+| Intent/partial report without matching final result | Preserve original input, report and process evidence; completion remains unknown/partial. |
+| No report or inaccessible report | Absence does not prove no mutation. Only positive evidence of a pre-operation refusal establishes that refusal. |
 
-First-pass failures are collected for a final native recovery phase; normal
-batch operation never forcibly terminates a process. For explicit lock/process
-actions read `exceptional_operations.md`. Report `elevation_required` or
-host-policy denial without changing client policy or attempting a bypass.
+Bound manual inspection (for example at most 256 directory entries and 8 MiB
+of report bytes). Report inspection as incomplete if either limit prevents
+certainty; never infer uniqueness from a truncated listing. Validate request
+IDs as 1–128 ASCII letters/digits/`_`/`-`, inspect literal direct children only,
+reject reparse paths and keep ACLs unchanged. A single matching file is only
+candidate evidence: validate its intent/result binding and terminal row.
+Do not open the native state store through a mutating/creating API just to
+inspect history; an active writer's refusal is unavailable/unknown, not a
+reason to release its lock. The published v2.0.0 executable has no native
+`status`/request-lookup command.
 
-Quick deletion does not overwrite contents or sanitize historical storage.
-Other handles, hardlinks or storage layers can delay allocation release. Device
-free-space differences are observations affected by unrelated activity, not
-attributable reclaimed-byte counts. Report measured performance only; do not
-claim theoretical hardware maximum or immediate space availability.
+A crash can lose phase/byte observations; surviving names cannot reconstruct
+unrecorded metrics. Quick scratch vanishes when handles close; reports cannot
+rebuild safe frozen membership. No quick cross-process resume, automatic
+replay, rescan-as-authority, delete-from-report or exactly-once guarantee exists.
+Resolve uncertainty before any fresh owner-authorized selection. Ctrl+C is
+cooperative; completed removals remain completed.
+
+Normal Quick collects first-pass failures for final native recovery without
+forced termination. Explicit lock/process/overwrite recovery requires
+[exceptional operations](exceptional_operations.md). Report privilege/policy
+refusal with an actionable real OS-consent handoff; never change client policy,
+self-elevate or collect credentials. Observed free-space deltas are affected by
+other activity/handles/hardlinks/storage layers and do not attribute reclaimed
+bytes or establish physical sanitization.

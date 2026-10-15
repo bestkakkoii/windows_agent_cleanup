@@ -14,6 +14,16 @@ Use disjoint ownership when delegating work. Internal handoffs should be concise
 
 Run the relevant static analysis, build diagnostics, and tests justified by risk and impact. Preserve strict diagnostics rather than hiding a warning to make CI green. Destructive tests use newly created, isolated fixtures only. Portable or stub-based checks do not establish Windows runtime behavior.
 
+A performance change needs reproducible end-to-end measurements on regenerated fixtures. Include preparation, manifest handling, deletion, recovery and reporting; record hardware, filesystem, tool versions, concurrency and background interference. Do not submit an unexplained speed multiplier.
+
+## Build from source
+
+This is explicit engineering work. Ordinary Agent adoption uses the official
+Release Windows x64 runtime ZIP, verifies its release checksum before extraction
+and does not build source; follow [runtime setup](README.md#start-with-your-agent).
+A missing checkout EXE is not permission to bootstrap a compiler or build during
+cleanup. Obtain a source checkout only when development/building was requested.
+
 From the source root, `build_release.bat` always configures/builds Release,
 checks embedded manifests and runs the safe suites. It does not require an
 administrator token for those tests. There is no separate validation BAT or
@@ -43,7 +53,10 @@ A successful suite may still report untested cases in `coverage_gaps` or stdout
 `not_run` arrays. Record those gaps instead of treating the top-level result as
 complete platform acceptance.
 
-A performance change needs reproducible end-to-end measurements on regenerated fixtures. Include preparation, manifest handling, deletion, recovery and reporting; record hardware, filesystem, tool versions, concurrency and background interference. Do not submit an unexplained speed multiplier.
+Source-package verification is also engineering-only:
+`scripts/verify_package.py <source_archive.zip>` validates the unpublished test
+Source ZIP without extracting/executing it. Use `--help` for its exact options;
+it does not accept the published runtime ZIP or GitHub-generated source archives.
 
 ## Pull requests and reports
 

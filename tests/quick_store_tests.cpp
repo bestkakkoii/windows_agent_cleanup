@@ -216,6 +216,9 @@ public:
     result.creation_time = 123;
     result.directory = directory;
     result.allocated_bytes = directory ? 0 : 4096;
+    result.type_known = true;
+    result.logical_size_known = true;
+    result.logical_size_bytes = directory ? 0 : 13;
     return result;
 }
 
@@ -332,8 +335,10 @@ int main()
             auto outcome = untouched.value();
             outcome.code = "deleted_quick_namespace_removed";
             outcome.deleted = true;
+            outcome.remove_attempted = true;
             tests.check(result->outcomes->record(0, outcome).has_value(), "indexed_success_recorded");
-            tests.check(result->outcomes->read(0)->deleted, "indexed_success_round_trip");
+            tests.check(result->outcomes->read(0)->deleted && result->outcomes->read(0)->remove_attempted,
+                "indexed_success_and_unique_remove_attempt_round_trip");
             auto forged = outcome;
             forged.identity = "another_identity";
             tests.check(!result->outcomes->record(1, forged), "outcome_identity_substitution_rejected");
@@ -403,7 +408,7 @@ int main()
         {
             static_cast<void>(name);
             const auto size = file->size().value();
-            if (size != 144 && size != 576)
+            if (size != 152 && size != 576)
             {
                 record = file;
             }
@@ -418,7 +423,7 @@ int main()
         for (const auto& [name, file] : files->files)
         {
             static_cast<void>(name);
-            if (file->size() != 144 && file->size() != 576)
+            if (file->size() != 152 && file->size() != 576)
             {
                 std::array<std::byte, 8> length;
                 length.fill(std::byte{0xff});
@@ -430,7 +435,7 @@ int main()
     {
         auto files = factory("tamper_index");
         auto result = one(files);
-        tests.check(files->with_size(144)->corrupt(20) && !result.targets->index(0) && !result.targets->validate(),
+        tests.check(files->with_size(152)->corrupt(20) && !result.targets->index(0) && !result.targets->validate(),
             "compact_index_tamper_rejected");
         tests.check(!result.targets->load(1) && !result.outcomes->read(1), "out_of_range_page_reads_rejected");
     }
@@ -455,6 +460,7 @@ int main()
         auto outcome = result.outcomes->read(0).value();
         outcome.code = "deleted_quick_namespace_removed";
         outcome.deleted = true;
+            outcome.remove_attempted = true;
         result.outcomes->record(0, outcome).value();
         auto file = files->with_size(1152);
         std::array<std::byte, 576> copied{};
@@ -574,6 +580,40 @@ int main()
             "more_than_one_hundred_thousand_targets_admitted_by_resources");
         tests.check(result && result->metrics.peak_buffer_bytes <= 4ULL * 1024 * 1024,
             "large_batch_full_path_residency_remains_bounded");
+    }
+    {
+        auto files = factory("logical_metadata");
+        auto stage = builder(files);
+        auto known = target("C:\\metadata\\known");
+        known.logical_size_bytes = 27;
+        quick::target unknown;
+        unknown.path = "C:\\metadata\\unknown";
+        unknown.preparation_error = {"metadata_denied", 5};
+        stage->append(known).value();
+        stage->append(unknown).value();
+        auto batch = stage->finalize().value();
+        const auto restored = batch.targets->load(0);
+        const auto indexed = batch.targets->index(0);
+        tests.check(restored && indexed && restored->type_known && restored->logical_size_known &&
+            restored->logical_size_bytes == 27 && indexed->type_known && indexed->logical_size_known &&
+            indexed->logical_size_bytes == 27,
+            "frozen_record_and_index_preserve_known_default_stream_snapshot");
+        const auto statistics = quick::summarize_selection(*batch.targets);
+        tests.check(statistics && statistics->selected.files == 1 && statistics->selected.unclassified == 1 &&
+            statistics->logical_bytes.selected == 27 && statistics->logical_bytes.selected_unknown == 1 &&
+            statistics->failed == 1 && statistics->pending == 0 && statistics->final_failures.access_lock == 1,
+            "frozen_scan_statistics_preserve_unclassified_preparation_refusal");
+        auto alternate = builder(factory("logical_metadata_alternate"));
+        known.logical_size_bytes = 28;
+        alternate->append(known).value();
+        alternate->append(unknown).value();
+        auto changed = alternate->finalize().value();
+        tests.check(changed.targets->info().fingerprint != batch.targets->info().fingerprint,
+            "staged_fingerprint_binds_logical_snapshot_metadata");
+        auto invalid = target("C:\\metadata\\invalid");
+        invalid.logical_size_known = false;
+        auto rejected = builder(factory("logical_metadata_invalid"));
+        tests.check(!rejected->append(invalid), "unknown_logical_size_cannot_carry_fabricated_bytes");
     }
     std::cout << "{\"total\":" << tests.total << ",\"passed\":" << tests.passed << "}\n";
     return tests.total == tests.passed ? 0 : 1;

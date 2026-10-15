@@ -72,6 +72,23 @@ int main()
         text.find("\"complete_report\":false") != std::string::npos,
         "summary_explains_retained_evidence_and_session_limit");
     expect(frontend::diagnostic_failure(value).code == "quick_protected_resource_tree", "representative_page_failure_visible");
+    value.quick_statistics.supported = true;
+    value.quick_statistics.selected.files = 2;
+    value.quick_statistics.selected.directories = 3;
+    value.quick_statistics.completed.files = 2;
+    value.quick_statistics.completed.directories = 3;
+    value.quick_statistics.logical_bytes.selected = 27;
+    value.quick_statistics.logical_bytes.completed = 27;
+    value.quick_statistics.logical_bytes.selected_unknown = 1;
+    text = frontend::diagnostic_json(value);
+    expect(text.find("\"selected\":{\"files\":2,\"directories\":3,\"unclassified\":0}") != std::string::npos &&
+        text.find("\"snapshot_logical_bytes\":{\"selected\":27") != std::string::npos &&
+        text.find("\"selected_unknown\":1") != std::string::npos,
+        "diagnostics_carry_shared_namespace_and_snapshot_byte_statistics");
+    expect(text.find("\"first_pass\":null,\"recovery\":null") != std::string::npos,
+        "unmeasured_core_durations_remain_null");
+    value.quick_statistics = {};
+
     auto stale = std::make_shared<frontend::quick_page>(*page);
     stale->fingerprint = "another_job";
     value.quick_page_data = stale;

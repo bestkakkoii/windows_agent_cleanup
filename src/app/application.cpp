@@ -335,6 +335,7 @@ namespace secure_erase::frontend
             view.quick_total = 0;
             view.quick_attempted = 0;
             view.quick_pending = 0;
+            view.quick_statistics = {};
             view.locks.clear();
             view.lock_path.clear();
         }
@@ -442,60 +443,12 @@ namespace secure_erase::frontend
             view.quick_pending = value.total > value.attempted ? value.total - value.attempted : 0;
             view.completed_count = value.completed;
             view.failed_count = value.failed;
+            view.quick_statistics = value.statistics;
             if (!value.stopping_error.code.empty())
             {
                 view.error_code = value.stopping_error.code;
                 view.native_code = value.stopping_error.native_code;
             }
-        }
-
-        void sample_quick_space(quick::space_observation& observation, bool before)
-        {
-            auto sampled = quick_host->sample_space(observation.volume_key);
-            if (sampled && sampled->volume_key != observation.volume_key)
-            {
-                sampled = std::unexpected(engine::error{"quick_space_volume_mismatch"});
-            }
-            auto& destination = before ? observation.before : observation.after;
-            auto& error = before ? observation.before_error : observation.after_error;
-            if (sampled)
-            {
-                destination = std::move(*sampled);
-            }
-            else
-            {
-                error = sampled.error();
-            }
-        }
-
-        std::pair<std::vector<quick::space_observation>, bool> begin_quick_space(const quick::staged_plan_info& plan)
-        {
-            // PERFORMANCE: Bound telemetry independently of target count. Only
-            // eligible frozen volume keys are sampled; no namespace is enumerated.
-            constexpr std::size_t maximum_volumes = 128;
-            std::vector<quick::space_observation> observations;
-            observations.reserve((std::min)(maximum_volumes, plan.device_keys.size()));
-            std::unordered_set<std::string_view> selected;
-            selected.reserve(maximum_volumes);
-            bool truncated{};
-            for (const auto& device_key : plan.device_keys)
-            {
-                if (device_key.empty() || selected.contains(device_key))
-                {
-                    continue;
-                }
-                if (selected.size() == maximum_volumes)
-                {
-                    truncated = true;
-                    break;
-                }
-                selected.insert(device_key);
-                quick::space_observation observation;
-                observation.volume_key = device_key;
-                sample_quick_space(observation, true);
-                observations.push_back(std::move(observation));
-            }
-            return {std::move(observations), truncated};
         }
 
         engine::result<void> audit_batch(std::span<const engine::event> events)
@@ -596,6 +549,7 @@ namespace secure_erase::frontend
                     view.quick_total = info.target_count;
                     view.quick_attempted = 0;
                     view.quick_pending = info.target_count;
+                    view.quick_statistics = {};
                     view.completed_count = 0;
                     view.failed_count = 0;
                     view.quick_stage = "first_pass";
@@ -605,13 +559,13 @@ namespace secure_erase::frontend
                     quick_lock_identity.clear();
                     quick_last_progress = {};
                 }
-                auto [space, truncated] = begin_quick_space(info);
+                auto [space, truncated] = quick::begin_space_observations(*quick_host, info.device_keys);
                 auto result = quick::run_staged(*targets, *outcomes, fingerprint,
                     irreversible_confirmed, *quick_host, controls, quick_settings,
                     [this](const quick::progress& value) { quick_progress(value); }, retry);
                 for (auto& observation : space)
                 {
-                    sample_quick_space(observation, false);
+                    quick::sample_space(*quick_host, observation, false);
                 }
                 if (!result)
                 {
@@ -628,6 +582,7 @@ namespace secure_erase::frontend
                 }
                 report->status = result->status;
                 report->stopping_error = result->stopping_error;
+                report->statistics = result->statistics;
                 engine::error diagnostics;
                 std::shared_ptr<const quick_page> page;
                 try
@@ -738,6 +693,7 @@ namespace secure_erase::frontend
                     view.completed_count = result->completed;
                     view.failed_count = result->failed;
                     view.quick_pending = result->unattempted;
+                    view.quick_statistics = result->statistics;
                     view.error_code = diagnostics.code.empty() ? report->stopping_error.code : diagnostics.code;
                     view.native_code = diagnostics.code.empty() ? report->stopping_error.native_code : diagnostics.native_code;
                     if (view.error_code.empty())

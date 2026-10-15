@@ -2,13 +2,18 @@
 
 專為 Codex、Claude Code 與其他本機 Agent 設計的 Windows 原生批次清理工具；CLI 與 GUI 共用核心。
 
-將完整發行包解壓至目標 Windows 電腦的合適目錄；Agent 可依可用空間、權限及專案／使用者範圍自行決定，並優先沿用已驗證的既有位置。沒有指定磁碟或父目錄。接著對 Agent 提供實際絕對路徑：
+一般 Agent 自主安裝請使用官方 **[Latest Release](https://github.com/bestkakkoii/windows_agent_cleanup/releases/latest)**：
+
+1. 下載同一發行紀錄中的 **Windows x64 runtime ZIP** 與對應 `.sha256`。GitHub 自動產生的 **Source code (zip/tar.gz)** 是工程原始碼，不能當成安裝包。
+2. **解壓縮前**使用 `Get-FileHash -LiteralPath <下載的ZIP> -Algorithm SHA256`，核對發行紀錄的雜湊；缺少雜湊或不符時停止。
+3. Agent 依空間、權限及使用者／專案範圍選擇合適的可攜目錄，沒有指定磁碟或父目錄。沿用已驗證的安裝；替換前先檢查來源與本機修改，優先使用獨立目錄，避免弄髒開發 checkout。
+4. 解壓**完整發行包**，將實際絕對入口路徑交給本機 Agent：
 
 ```text
 read <工具實際所在目錄>/README_AI.md
 ```
 
-上述路徑是待替換的示例，不是安裝限制。Agent 會先詢問清理計畫與專案範圍，再依選定規則自主盤點、提交整批名單並回報結果。直接讀取操作文件不需要安裝 Skill 或 MCP。
+Agent 沿用已提供的清理計畫、範圍與授權，只詢問缺少的選項。一般安裝不下載 `main`／`master` 或原始碼自行編譯，也不需要編譯器、SDK、Python、Node.js、全域 PATH、Skill 註冊或 MCP。安裝與讀取文件不授權刪除；[共用 Skill](skills/project-cleanup/SKILL.md) 是唯一快速操作流程，只有明確開發需求才進入[工程路線](CONTRIBUTING.md#build-from-source)。
 
 快速模式採邏輯刪除；安全抹除須另外明確選用。工具不保證立即回收全部容量、SSD 實體不可復原，或在未量測的硬體上達到最大速度。
 

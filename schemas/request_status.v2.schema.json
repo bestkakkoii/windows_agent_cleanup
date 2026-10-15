@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "windows_agent_cleanup.request_status.v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "request_id",
+    "lookup_state",
+    "report_references",
+    "original_result",
+    "error_code",
+    "native_code",
+    "next_action",
+    "retry_safe"
+  ],
+  "properties": {
+    "schema": {
+      "const": "windows_agent_cleanup.request_status.v2"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9_-]+$"
+    },
+    "lookup_state": {
+      "enum": [
+        "terminal_result",
+        "intent_only",
+        "no_record_observed",
+        "ambiguous",
+        "unavailable",
+        "inspection_incomplete"
+      ]
+    },
+    "report_references": {
+      "type": "array",
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "maxLength": 131072
+      }
+    },
+    "original_result": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "result.schema.json"
+        },
+        {
+          "$ref": "result.v2.schema.json"
+        }
+      ]
+    },
+    "error_code": {
+      "type": "string",
+      "maxLength": 128
+    },
+    "native_code": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295
+    },
+    "next_action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "action",
+        "reason"
+      ],
+      "properties": {
+        "action": {
+          "enum": [
+            "none",
+            "use_supported_host",
+            "request_os_consent",
+            "correct_input",
+            "inspect_report",
+            "wait_same_invocation",
+            "reconcile_unknown"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 128
+        }
+      }
+    },
+    "retry_safe": {
+      "const": false
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "lookup_state": {
+            "const": "terminal_result"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "original_result": {
+            "not": {
+              "type": "null"
+            }
+          },
+          "report_references": {
+            "minItems": 1,
+            "maxItems": 1
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "original_result": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "lookup_state": {
+            "const": "ambiguous"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "report_references": {
+            "minItems": 2
+          }
+        }
+      }
+    }
+  ]
+}

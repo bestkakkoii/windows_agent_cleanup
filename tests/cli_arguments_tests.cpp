@@ -16,7 +16,38 @@ int main()
 {
     namespace cli = secure_erase::cli;
     const auto parse = [](std::vector<std::string> values) { return cli::parse(values); };
-    expect(parse({})->command == "capabilities", "default_nonmutating");
+    expect(parse({})->command == "capabilities" && parse({})->contract_version == 1, "default_nonmutating_v1");
+    expect(parse({"capabilities", "--contract-version", "2"})->contract_version == 2,
+        "explicit_v2_capabilities");
+    expect(parse({"capabilities", "--contract-version", "1"})->contract_version == 1,
+        "explicit_v1_capabilities");
+    expect(parse({"--help", "--contract-version", "2"})->contract_version == 2, "explicit_v2_structured_help");
+    for (const auto version : {"0", "3", "-1", "2x", "4294967296"})
+    {
+        expect(!parse({"capabilities", "--contract-version", version}), "unsupported_contract_rejected");
+    }
+    expect(!parse({"capabilities", "--contract-version", "2", "--contract-version", "2"}),
+        "duplicate_contract_rejected");
+    const std::vector<std::string> status{"status", "--request-id", "unit_status", "--report-dir", "C:\\private",
+        "--contract-version", "2"};
+    expect(parse(status) && parse(status)->root.empty() && parse(status)->manifest.empty(), "status_read_only_no_scope_required");
+    auto invalid_status = status;
+    invalid_status.pop_back();
+    invalid_status.pop_back();
+    expect(!parse(invalid_status), "status_requires_v2");
+    for (const auto& option : std::vector<std::vector<std::string>>{
+        {"--root", "C:\\scope"}, {"--manifest", "C:\\manifest.jsonl"}, {"--authorize-irreversible"},
+        {"--authorize-close"}, {"--authorize-force"}, {"--mode", "quick"}, {"--workers", "1"},
+        {"--log-retention-days", "0"}, {"--checkpoint-retention-days", "0"}})
+    {
+        invalid_status = status;
+        invalid_status.insert(invalid_status.end(), option.begin(), option.end());
+        expect(!parse(invalid_status), "status_rejects_all_execution_options");
+    }
+    expect(cli::requested_contract_version(status) == 2 && cli::requested_contract_version({}) == 1,
+        "parse_failure_envelope_selects_only_explicit_v2");
+    const std::vector<std::string> option_as_value{"run", "--root", "--contract-version", "2"};
+    expect(cli::requested_contract_version(option_as_value) == 1, "contract_option_value_is_not_negotiation");
     expect(parse({"--help"})->command == "capabilities", "structured_help");
     expect(parse({"--version"})->command == "capabilities", "structured_version");
     expect(!parse({"capabilities", "--root", "C:\\x"}), "capabilities_no_options");
@@ -29,6 +60,10 @@ int main()
     expect(!parse(run), "run_requires_authorization");
     run.push_back("--authorize-irreversible");
     expect(static_cast<bool>(parse(run)), "authorized_batch");
+    auto v2_run = run;
+    v2_run.insert(v2_run.end(), {"--contract-version", "2"});
+    expect(parse(v2_run) && parse(v2_run)->contract_version == 2 && parse(v2_run)->irreversible,
+        "explicit_v2_authorized_batch");
     auto retained = run;
     retained[2] = "overwrite";
     retained.insert(retained.end(), {"--ssd-queue-depth", "3", "--log-retention-days", "7",

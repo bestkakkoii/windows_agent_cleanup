@@ -77,6 +77,47 @@ namespace secure_erase::frontend
         constexpr std::size_t diagnostic_event_limit = 64;
         constexpr std::size_t diagnostic_text_limit = 256;
 
+        std::string namespace_statistics_json(const engine::namespace_statistics& value)
+        {
+            return "{\"files\":" + std::to_string(value.files) +
+                ",\"directories\":" + std::to_string(value.directories) +
+                ",\"unclassified\":" + std::to_string(value.unclassified) + "}";
+        }
+
+        std::string statistics_json(const engine::operation_statistics& value)
+        {
+            if (!value.supported)
+            {
+                return "null";
+            }
+            const auto duration = [](const std::optional<double>& milliseconds)
+            {
+                return milliseconds ? std::to_string(*milliseconds) : std::string("null");
+            };
+            const auto& bytes = value.logical_bytes;
+            const auto& failures = value.final_failures;
+            return "{\"selected\":" + namespace_statistics_json(value.selected) +
+                ",\"remove_attempted\":" + namespace_statistics_json(value.remove_attempted) +
+                ",\"completed\":" + namespace_statistics_json(value.completed) +
+                ",\"snapshot_logical_bytes\":{\"selected\":" + std::to_string(bytes.selected) +
+                ",\"remove_attempted\":" + std::to_string(bytes.remove_attempted) +
+                ",\"completed\":" + std::to_string(bytes.completed) +
+                ",\"selected_unknown\":" + std::to_string(bytes.selected_unknown) +
+                ",\"remove_attempted_unknown\":" + std::to_string(bytes.remove_attempted_unknown) +
+                ",\"completed_unknown\":" + std::to_string(bytes.completed_unknown) +
+                "},\"failed\":" + std::to_string(value.failed) +
+                ",\"pending\":" + std::to_string(value.pending) +
+                ",\"final_failures\":{\"scope_protection\":" + std::to_string(failures.scope_protection) +
+                ",\"reparse\":" + std::to_string(failures.reparse) +
+                ",\"identity\":" + std::to_string(failures.identity) +
+                ",\"access_lock\":" + std::to_string(failures.access_lock) +
+                ",\"resource\":" + std::to_string(failures.resource) +
+                ",\"report_audit\":" + std::to_string(failures.report_audit) +
+                ",\"other\":" + std::to_string(failures.other) +
+                "},\"phase_ms\":{\"first_pass\":" + duration(value.first_pass_ms) +
+                ",\"recovery\":" + duration(value.recovery_ms) + "}}";
+        }
+
         bool diagnostic_success(const engine::target_outcome& value)
         {
             return value.deleted && (value.code == "deleted_quick_namespace_removed" ||
@@ -223,6 +264,7 @@ namespace secure_erase::frontend
             ",\"failed\":" + std::to_string(value.failed_count) +
             ",\"failed_includes_unattempted\":" + std::string(boolean(!value.quick_mode)) +
             ",\"pending\":" + (attempt_counts_known ? std::to_string(value.quick_pending) : "null") + "}";
+        text += ",\"operation_statistics\":" + statistics_json(value.quick_statistics);
         const auto append_outcome = [&text, &quote, &boolean](const engine::target_outcome& item,
             std::optional<std::uint64_t> index)
         {

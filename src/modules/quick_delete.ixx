@@ -18,6 +18,9 @@ export namespace secure_erase::quick
         // CONTRACT: Observed allocation is a scheduling hint, never a guarantee
         // of reclaimable bytes (hardlinks, shared blocks and handles can retain it).
         std::uint64_t allocated_bytes{};
+        std::uint64_t logical_size_bytes{};
+        bool logical_size_known{};
+        bool type_known{};
     };
 
     struct plan
@@ -52,6 +55,9 @@ export namespace secure_erase::quick
         bool directory{};
         bool preparation_failed{};
         std::array<std::byte, 32> namespace_digest{};
+        std::uint64_t logical_size_bytes{};
+        bool logical_size_known{};
+        bool type_known{};
     };
 
     struct staged_plan_info
@@ -91,6 +97,7 @@ export namespace secure_erase::quick
         std::size_t failed{};
         std::size_t unattempted{};
         engine::error stopping_error;
+        engine::operation_statistics statistics;
     };
 
     class outcome_sink
@@ -207,6 +214,12 @@ export namespace secure_erase::quick
             const engine::locking_process& process, bool force_confirmed) = 0;
     };
 
+    // CONTRACT: Read-only, at most 128 unique eligible frozen volume keys;
+    // truncation and observation failures remain explicit. Never scans drives.
+    void sample_space(backend& host, space_observation& observation, bool before);
+    [[nodiscard]] std::pair<std::vector<space_observation>, bool> begin_space_observations(
+        backend& host, std::span<const std::string> frozen_device_keys);
+
     struct progress
     {
         std::string stage;
@@ -220,6 +233,7 @@ export namespace secure_erase::quick
         std::size_t concurrency_increases{};
         std::size_t concurrency_decreases{};
         engine::error stopping_error;
+        engine::operation_statistics statistics;
     };
 
     struct options
@@ -250,6 +264,12 @@ export namespace secure_erase::quick
 
     [[nodiscard]] engine::result<admission_estimate> estimate_admission(
         const staged_plan_info& value, const resource_sample& resources, const options& settings = {});
+
+    // CONTRACT: Advisory selection summary; pending is zero because no execution
+    // outcomes exist. Source is finalized/validated; reads authenticated compact
+    // metadata and only preparation-refusal records for shared classification.
+    // No target observation or backend action occurs.
+    [[nodiscard]] engine::result<engine::operation_statistics> summarize_selection(target_source& source);
 
     using progress_observer = std::function<void(const progress&)>;
 

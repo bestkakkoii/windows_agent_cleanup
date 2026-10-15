@@ -60,6 +60,33 @@ namespace
         return passed;
     }
 
+    bool host_readiness_observed()
+    {
+        const auto observed = inspect_host_readiness();
+        TOKEN_ELEVATION elevation{};
+        DWORD returned{};
+        const bool token_known = GetTokenInformation(GetCurrentThreadEffectiveToken(), TokenElevation,
+            &elevation, sizeof(elevation), &returned) && returned >= sizeof(elevation);
+        const bool privilege_agrees = token_known ?
+            observed.elevated == (elevation.TokenIsElevated != 0) && !observed.elevation_error :
+            !observed.elevated && observed.elevation_error.has_value();
+        const bool platform_known = observed.windows_build && !observed.platform_error &&
+            !observed.architecture_error && observed.native_architecture != host_architecture::unknown &&
+            observed.process_architecture != host_architecture::unknown;
+        const bool expected_supported = observed.windows_build && *observed.windows_build >= 22000 &&
+            observed.native_architecture == host_architecture::x64 &&
+            observed.process_architecture == host_architecture::x64;
+        bool passed = check(observed.required_windows_build == 22000 &&
+            observed.required_native_architecture == host_architecture::x64 &&
+            observed.required_process_architecture == host_architecture::x64 && platform_known &&
+            observed.platform_supported == expected_supported, "host_readiness_build_and_architecture_observed");
+        passed &= check(privilege_agrees, "host_readiness_effective_elevation_observed");
+        const auto expected_ready = expected_supported && token_known && elevation.TokenIsElevated != 0;
+        passed &= check(observed.filesystem_commands_ready == expected_ready,
+            "host_readiness_derived_without_path_admission");
+        return passed;
+    }
+
     std::optional<BY_HANDLE_FILE_INFORMATION> read_unchanged_fixture(const std::filesystem::path& path)
     {
         HANDLE file = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
@@ -212,7 +239,8 @@ namespace
         const auto denied = [&](const std::filesystem::path& path, std::string_view code)
         {
             auto targets = backend.prepare({path_text(path)}, controls);
-            return targets && targets->size() == 1 && targets->front().preparation_error.code == code;
+            return targets && targets->size() == 1 && targets->front().preparation_error.code == code &&
+                !targets->front().type_known && !targets->front().logical_size_known;
         };
         passed &= check(denied(*executable, "quick_running_image"), "running_executable_name_protected");
         passed &= check(denied(dependency, "quick_running_image"), "loaded_dependency_name_protected");
@@ -241,6 +269,11 @@ namespace
         passed &= check(admitted, "unrelated_same_directory_file_and_subtree_admitted");
         if (admitted)
         {
+            passed &= check(std::ranges::all_of(*prepared, [](const auto& target)
+            {
+                return target.type_known && target.logical_size_known &&
+                    target.logical_size_bytes == (target.directory ? 0 : 8193);
+            }), "quick_snapshot_logical_eof_and_directory_zero_known");
             auto frozen = quick::freeze("0123456789abcdef0123456789abcdef", std::move(*prepared));
             auto removed = frozen ? quick::run(*frozen, frozen->fingerprint, true, backend, controls, {1, true}) :
                 result<run_report>(std::unexpected(frozen.error()));
@@ -360,6 +393,10 @@ int main(int count, char** arguments)
     {
         std::puts("{\"status\":\"not_run\",\"reason\":\"explicit_isolated_fixture_opt_in_required\"}");
         return 77;
+    }
+    if (!host_readiness_observed())
+    {
+        return 1;
     }
     std::array<wchar_t, 32768> temporary{};
     const DWORD length = GetTempPathW(static_cast<DWORD>(temporary.size()), temporary.data());
