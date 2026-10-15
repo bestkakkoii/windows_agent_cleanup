@@ -10,7 +10,7 @@
 
 <p align="center"><img src="assets/hero.svg" alt="Windows Agent Cleanup: a shared native core for agent CLI and desktop GUI"></p>
 
-[繁體中文](README_zh_tw.md) · [Agent entry](README_AI.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
+[繁體中文](README_zh_tw.md) · [Agent entry](README_AI.md) · [Source RCs](https://github.com/bestkakkoii/windows_agent_cleanup/releases) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
 
 Windows Agent Cleanup removes large project cleanup batches through a native C++ core shared by a machine-oriented CLI and a compact desktop GUI. Quick deletion removes selected names without reading or overwriting file contents. The separate overwrite workflow provides explicit, evidence-based sanitization results.
 

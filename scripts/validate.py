@@ -128,7 +128,8 @@ def main() -> int:
               'host': {'platform': sys.platform, 'python': sys.version},
               'source_checks_passed': passed, 'source_rc_eligible': passed and runtime['status'] == 'passed',
               'release_eligible': False,
-              'native_windows': {'status': 'not_run', 'reason': 'import_actual_native_evidence_separately'},
+              'native_windows': {'status': 'safe_tests_passed' if sys.platform == 'win32' and runtime['status'] == 'passed' else 'not_run',
+                                 'scope': 'this host safe test executables only; import build/isolated/GUI/hardware evidence separately'},
               'hardware_matrix': {'status': 'not_run', 'owner': 'user'},
               'physical_sanitization_guaranteed': False}
     report_path = directory / 'validation_report.json'

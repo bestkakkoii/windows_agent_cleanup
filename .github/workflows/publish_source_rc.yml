@@ -1,0 +1,61 @@
+name: publish_source_rc
+
+on:
+  workflow_run:
+    workflows: [source_and_windows]
+    types: [completed]
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  publish:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      contains(github.event.workflow_run.head_commit.message, '[publish rc]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: source_rc_${{ github.event.workflow_run.head_sha }}
+          path: artifact/
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+      - name: Verify and publish the Source RC
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+          TEST_RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, subprocess
+          commit = os.environ['SOURCE_SHA']
+          files = list(pathlib.Path('artifact').glob('*.zip'))
+          if len(files) != 1:
+              raise SystemExit('source_rc.archive_count_invalid')
+          archive = files[0]
+          checksum_file = archive.with_suffix('.zip.sha256')
+          expected = checksum_file.read_text().split()[0]
+          subprocess.run(['python3', 'scripts/verify_package.py', str(archive),
+                          '--expected-commit', commit, '--expected-sha256', expected], check=True)
+          notes = pathlib.Path('artifact/release_notes.md')
+          notes.write_text('Source RC for commit `' + commit + '`.\n\n'
+                           'Native hosted Windows compilation and isolated fixtures: ' + os.environ['TEST_RUN_URL'] + '\n\n'
+                           'Consumer Windows 11 builds, GUI runtime and HDD/SSD/USB hardware acceptance remain pending. '
+                           'This is not a final Release and makes no physical NAND sanitization or maximum-throughput guarantee.\n', encoding='utf-8')
+          tag = 'source-rc-' + commit[:12]
+          subprocess.run(['gh', 'release', 'create', tag, str(archive), str(checksum_file),
+                          '--repo', os.environ['GITHUB_REPOSITORY'], '--target', commit,
+                          '--prerelease', '--title', 'Windows Agent Cleanup Source RC ' + commit[:12],
+                          '--notes-file', str(notes)], check=True)
+          PY

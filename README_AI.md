@@ -138,3 +138,12 @@ From a Windows source checkout, run:
 Build outputs are `build/windows_release/secure_erase_cli.exe` and `secure_erase_gui.exe`; run logs are `build_logs/<run_id>`. Optional `-parallel_jobs N` controls build parallelism. `validate_windows.bat -enable_isolated_destructive_tests` enables the isolated destructive suites explicitly. These commands do not authorize deleting user data. Read [docs/windows_test_plan.md](docs/windows_test_plan.md) before opting into isolated destructive fixtures. Preserve logs outside the tracked source; source/build/script checks and portable tests cannot establish native Windows or hardware results. Unmet platform acceptance gates keep the delivery at RC.
 
 For development delegation, assign disjoint files, propagate the engineering policy and return concise technical English with changed contracts, actual checks, failures and pending evidence. Do not assume a child agent inherited the original conversation. Keep generated binaries, caches, downloaded dependencies, one-off reports and temporary handoffs out of Git. Commit/push only within existing repository authorization, with reviewable changes and no assumed permission to rewrite shared history.
+
+Source RC archives contain `package_manifest.json` and per-run evidence under
+`evidence/`. For archive verification with Python 3.11+, use
+`python scripts/verify_package.py C:/downloads/source.zip --expected-commit COMMIT --expected-sha256 SHA256`.
+Get expected values from the trusted release/repository revision. Verification
+checks bytes and recorded evidence binding without extracting or executing
+members; it does not reproduce the runtime tests. Read [CONTRIBUTING.md](CONTRIBUTING.md#source-rc-publication)
+for packaging/publication and [docs/windows_test_plan.md](docs/windows_test_plan.md)
+for remaining platform and hardware acceptance.

@@ -25,6 +25,7 @@ def main() -> int:
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--validation', type=Path, required=True)
     parser.add_argument('--offline-dependencies', action='store_true')
+    parser.add_argument('--evidence', type=Path, action='append', default=[])
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     output = args.output.resolve()
@@ -57,6 +58,11 @@ def main() -> int:
                 content[dependency['directory'] + '/' + entry['path']] = data
     validation['source_commit'] = commit
     content['evidence/validation_report.json'] = (json.dumps(validation, ensure_ascii=False, indent=2) + '\n').encode()
+    for path in args.evidence:
+        name = 'evidence/' + path.name
+        if path.suffix not in {'.json', '.xml', '.jsonl'} or name in content:
+            parser.error('evidence_name_or_format_invalid:' + path.name)
+        content[name] = path.read_bytes()
     manifest = {'schema': 'windows_agent_cleanup.package.v1', 'version': '2.0.0-rc.1',
                 'source_commit': commit, 'status': 'source_rc_windows_hardware_validation_pending',
                 'generated_at': datetime.now(timezone.utc).isoformat(),

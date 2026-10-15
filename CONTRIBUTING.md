@@ -21,3 +21,20 @@ Keep commits reviewable and describe the final implementation. Normal pushes req
 Include the revision, Windows build, storage/filesystem shape, exact command, status/error code, and a sanitized diagnostic excerpt when reporting a bug. Keep sensitive paths, file contents and credentials out of public reports. See [SECURITY.md](SECURITY.md) for suspected vulnerabilities.
 
 Only maintained source, configuration, small fixtures, scripts, docs, assets and dependency locks belong in Git. Keep build outputs, downloaded dependencies, archives, private plans and per-run evidence outside the tracked source tree.
+
+## Source RC publication
+
+CI builds the pinned tools and native modules, runs safe and isolated fixtures,
+then packages a clean Source RC with its exact commit, per-file hashes and native
+evidence. `scripts/verify_package.py` checks the archive without extracting or
+executing it. Optional expected commit/SHA256 values must come from a trusted
+release or repository revision. Python 3.11+ is needed for these packaging tools,
+not for the native application or Windows build bootstrap.
+
+A maintainer-authorized main-branch commit containing `[publish rc]` requests a
+Source RC after that exact commit's complete CI succeeds. The publication workflow
+accepts only successful same-repository push runs and never publishes from fork
+pull requests. It creates a prerelease tagged `source-rc-<commit prefix>` and does
+not overwrite an existing release. The Windows consumer-build, GUI runtime and
+storage hardware matrix still require separate acceptance; CI does not promote RC
+to final Release.
