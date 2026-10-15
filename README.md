@@ -10,11 +10,11 @@
 
 <p align="center"><img src="assets/hero.svg" alt="Windows Agent Cleanup: a shared native core for agent CLI and desktop GUI"></p>
 
-[繁體中文](README_zh_tw.md) · [Agent entry](README_AI.md) · [Source RCs](https://github.com/bestkakkoii/windows_agent_cleanup/releases) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
+[繁體中文](README_zh_tw.md) · [Agent entry](README_AI.md) · [Releases](https://github.com/bestkakkoii/windows_agent_cleanup/releases) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
 
 Windows Agent Cleanup removes large project cleanup batches through a native C++ core shared by a machine-oriented CLI and a compact desktop GUI. Quick deletion removes selected names without reading or overwriting file contents. The separate overwrite workflow provides explicit, evidence-based sanitization results.
 
-**Status: 2.0.0-rc.1 release candidate.** Native Windows build and hardware evidence determine release readiness. This project does not claim a hardware-independent maximum speed or physical NAND sanitization.
+**Status: 2.0.0-dev.1 — unpublished development test source.** RC and Release publication wait for the owner’s returned Windows build/test evidence and review. CI produces test artifacts only; a passing CI run does not authorize publication. This project does not claim a hardware-independent maximum speed or physical NAND sanitization.
 
 ## Start with your agent
 
@@ -26,7 +26,7 @@ Read C:/tools/windows_agent_cleanup/README_AI.md
 
 The agent asks which cleanup plan to use and which project is in scope. After you choose, it identifies disposable material, submits a bulk manifest, and interprets a compact result. Reading the manual alone does not authorize deletion.
 
-The direct README route needs no MCP server, Skill installation, Python, Node.js, or model SDK. Optional [Agent Skills](skills/project-cleanup/SKILL.md) provide discovery shortcuts to the same instructions.
+The direct README route needs no MCP server, Skill installation, Python, Node.js, or model SDK. Optional [Agent Skills](skills/project-cleanup/SKILL.md) bundle the cleanup workflow, predefined plans and conditional protocol references. `README_AI.md` routes any agent to that shared workflow without requiring installation.
 
 ## What the native core does
 
@@ -51,13 +51,14 @@ flowchart TD
 
 ## Build and inspect
 
-Production targets Windows 11 or later on x64, MSVC, native C++ named modules and vendor `import std`. Build Release with the static MSVC runtime through `build_release.bat`. Build inputs, commands and validation boundaries are documented in [README_AI.md](README_AI.md#extend-or-build-this-project).
+Production targets Windows 11 or later on x64, MSVC, native C++ named modules and vendor `import std`. Build Release with the static MSVC runtime through `build_release.bat`. Build inputs, commands and validation boundaries are documented in [README_AI.md](README_AI.md#engineering-tasks).
 
 | Document | Purpose |
 |---|---|
-| [README_AI.md](README_AI.md) | Self-contained tool use and development entry |
+| [README_AI.md](README_AI.md) | Universal bootstrap and task routing |
+| [Project cleanup Skill](skills/project-cleanup/SKILL.md) | Cleanup workflow, plans and on-demand references |
 | [Design](docs/design.md) | Core boundaries and operational invariants |
 | [Approved requirements](spec/requirements.json) | Base requirements and explicit amendments |
 | [Windows test plan](docs/windows_test_plan.md) | Platform and storage evidence |
 
-Source, dependency locks, validation evidence and release artifacts must correspond to the same revision. Generated binaries and per-run logs do not belong in the source tree.
+Source, dependency locks, validation evidence and release artifacts must correspond to the same revision. [Publication policy](docs/publication.md) separates development artifacts, approved prereleases and full Releases. Generated binaries and per-run logs do not belong in the source tree.

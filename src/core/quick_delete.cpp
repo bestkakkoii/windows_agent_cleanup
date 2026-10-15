@@ -2,6 +2,7 @@
 
 import std;
 import secure_erase.crypto;
+import secure_erase.quick_feedback;
 import secure_erase.platform;
 
 namespace secure_erase::quick
@@ -309,26 +310,16 @@ class execution
         std::size_t group{};
     };
 
-    struct device_state
+    struct device_state : feedback::state
     {
         std::string key;
         std::vector<std::size_t> ready;
         std::size_t active{};
-        std::size_t limit{1};
         std::size_t ceiling{1};
         std::size_t samples{};
         std::uint64_t elapsed_nanoseconds{};
-        unsigned stable_windows{};
-        unsigned probe_windows{};
-        unsigned profitable_windows{};
-        unsigned cooldown{};
         unsigned pressure{};
         bool pressure_known{};
-        bool probing{};
-        double previous_rate{};
-        double previous_latency{};
-        double baseline_rate{};
-        double baseline_latency{};
         std::chrono::steady_clock::time_point window_started{std::chrono::steady_clock::now()};
     };
 
@@ -869,67 +860,12 @@ private:
         const auto latency = static_cast<double>(group.elapsed_nanoseconds) / static_cast<double>(group.samples);
         const bool pressure = (resources_.cpu_pressure_known && resources_.cpu_pressure >= 75) ||
             (group.pressure_known && group.pressure >= 75);
-        if (pressure)
-        {
-            const auto reduced = std::max<std::size_t>(1, group.limit / 2);
-            progress_.concurrency_decreases += static_cast<std::size_t>(reduced < group.limit);
-            group.limit = reduced;
-            group.stable_windows = 0;
-            group.probing = false;
-            group.cooldown = 3;
-        }
-        else if (group.probing)
-        {
-            // PERFORMANCE: Require two profitable windows; flat throughput does
-            // not earn another worker. A material regression rolls back even when
-            // per-operation latency is unchanged. Thresholds are tuning heuristics.
-            ++group.probe_windows;
-            const bool profitable = rate >= group.baseline_rate * 1.05 &&
-                latency <= group.baseline_latency * 1.50;
-            group.profitable_windows += static_cast<unsigned>(profitable);
-            const bool regressed = rate < group.baseline_rate * 0.90 ||
-                (latency > group.baseline_latency * 1.25 && rate < group.baseline_rate * 1.05);
-            if (regressed || (group.probe_windows >= 2 && group.profitable_windows < 2))
-            {
-                const auto reduced = std::max<std::size_t>(1, group.limit - 1);
-                progress_.concurrency_decreases += static_cast<std::size_t>(reduced < group.limit);
-                group.limit = reduced;
-                group.cooldown = 3;
-                group.probing = false;
-            }
-            else if (group.profitable_windows >= 2)
-            {
-                group.probing = false;
-            }
-            group.stable_windows = 0;
-        }
-        else if (group.cooldown != 0)
-        {
-            --group.cooldown;
-        }
-        else if (group.previous_rate == 0 ||
-            (rate >= group.previous_rate * 0.85 && latency <= group.previous_latency * 1.20))
-        {
-            ++group.stable_windows;
-            if (group.stable_windows >= 2 && group.limit < std::min(group.ceiling, worker_limit_) &&
-                group.ready.size() / 4 >= group.limit && resources_.cpu_pressure_known)
-            {
-                group.baseline_rate = rate;
-                group.baseline_latency = latency;
-                ++group.limit;
-                ++progress_.concurrency_increases;
-                group.probing = true;
-                group.probe_windows = 0;
-                group.profitable_windows = 0;
-                group.stable_windows = 0;
-            }
-        }
-        else
-        {
-            group.stable_windows = 0;
-        }
-        group.previous_rate = rate;
-        group.previous_latency = latency;
+        const auto adjustment = ::secure_erase::quick::feedback::observe_window(group, rate, latency,
+            pressure, std::min(group.ceiling, worker_limit_), group.ready.size(), resources_.cpu_pressure_known);
+        progress_.concurrency_increases += static_cast<std::size_t>(
+            adjustment == ::secure_erase::quick::feedback::adjustment::increase);
+        progress_.concurrency_decreases += static_cast<std::size_t>(
+            adjustment == ::secure_erase::quick::feedback::adjustment::decrease);
         group.samples = 0;
         group.elapsed_nanoseconds = 0;
         group.window_started = now;

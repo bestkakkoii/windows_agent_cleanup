@@ -29,6 +29,23 @@ Device-aware scheduling groups volumes sharing physical storage and conservative
 
 ## Agent orchestration
 
-[README_AI.md](../README_AI.md) owns cleanup plan selection and disposable-item policy. Optional Skills route there. The Agent establishes evidence and authorization; the native tool enforces filesystem execution rules. Parallel discovery is read-only, and a coordinator submits one frozen batch.
+[README_AI.md](../README_AI.md) routes universal entry and engineering tasks. The shared [project-cleanup Skill](../skills/project-cleanup/SKILL.md) owns cleanup plans and disposable-item policy; its bundled references supply protocol details only when needed. The Agent establishes evidence and authorization; the native tool enforces filesystem execution rules. Parallel discovery is read-only, and a coordinator submits one frozen batch.
 
 Long-running work may be partially complete when interrupted. Unknown completion requires reconciling the same job evidence; it must not trigger an automatic fresh scan. Native platform and hardware validation determine release eligibility. Measured end-to-end comparisons replace claims of a universal maximum speed.
+
+RC and Release publication additionally require owner-returned Windows build/test evidence and review for the exact revision. CI test artifacts remain unpublished development sources; see [publication policy](publication.md).
+
+## Source encoding
+
+Owned C/C++ units, modules, headers, PowerShell/Python scripts, CMake scripts and
+documentation are stored as UTF-8 with BOM. The Windows bootstrap checks owned
+code before compilation; source validation checks the maintained file set.
+A BOM identifies the stored file encoding; explicit compiler UTF-8 settings
+cover C/C++ inputs, generated probes and vendor standard-library modules.
+Pinned third-party archives and sources retain their locked bytes and use the
+same UTF-8 compiler policy. Do not rewrite dependencies to hide a decoding error.
+
+Host formats retain required exceptions: Skill frontmatter starts with `---`,
+JSON/JSONL and YAML metadata use UTF-8 without BOM, and the minimal CMD launchers
+use ASCII/CRLF (an unambiguous UTF-8 subset). Product protocols retain their
+separate declared encoding; source file BOMs do not become stdout/manifest BOMs.

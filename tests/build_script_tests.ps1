@@ -12,7 +12,8 @@ if ($parse_errors.Count -ne 0)
 }
 # CONTRACT: Load reviewed evidence parsers and process logging helper only; never
 # execute the build entrypoint. Child-process fixtures are confined to this test directory.
-foreach ($helper_name in @('read_junit_evidence', 'read_tool_version', 'read_embedded_manifest', 'invoke_logged'))
+foreach ($helper_name in @('read_junit_evidence', 'read_tool_version', 'read_embedded_manifest', 'invoke_logged',
+    'get_file_sha256', 'ensure_locked_tools', 'assert_no_external_build_flags', 'assert_owned_source_encoding'))
 {
     $helper = $ast.Find({ param($node)
         $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $helper_name
@@ -27,9 +28,14 @@ $directory = Join-Path ([IO.Path]::GetTempPath()) ('secure_erase_build_tests_' +
 [void][IO.Directory]::CreateDirectory($directory)
 $fixture = Join-Path $directory 'evidence.xml'
 $utf8 = New-Object Text.UTF8Encoding($false)
+$utf8_bom = New-Object Text.UTF8Encoding($true)
 $checks = 0
 $manifest_checks = 0
 $hash_checks = 0
+$bootstrap_checks = 0
+$source_encoding_checks = 0
+$native_charset_checks = 0
+$native_charset_status = 'not_run_non_windows_host'
 $hash_fixture = Join-Path $directory 'hash_[literal]_fixture.bin'
 $log_directory = $directory
 $capture_script = Join-Path $directory 'capture_manifest_arguments.ps1'
@@ -86,6 +92,227 @@ function assert_manifest_argument_capture([object]$capture, [string[]]$expected_
 }
 try
 {
+    $encoding_fixture = Join-Path $directory 'encoding fixture'
+    [void][IO.Directory]::CreateDirectory((Join-Path $encoding_fixture 'src'))
+    $encoding_source = Join-Path $encoding_fixture 'src/fixture.cpp'
+    [IO.File]::WriteAllText((Join-Path $encoding_fixture 'CMakeLists.txt'), '# owned CMake source', $utf8_bom)
+    $unicode_source = "import std;`n// é中" + ('a' * 8192)
+    [IO.File]::WriteAllText($encoding_source, $unicode_source, $utf8_bom)
+    $encoding_result = assert_owned_source_encoding $encoding_fixture
+    if ($encoding_result.checked_files -ne 2 -or -not $encoding_result.strict_utf8)
+    {
+        throw 'build_script.valid_source_encoding_rejected'
+    }
+    $source_encoding_checks += 1
+    foreach ($invalid in @(
+        @{bytes=$utf8.GetBytes($unicode_source);error='build.source_bom_missing:'},
+        @{bytes=([byte[]]@(239, 187, 191) + $utf8.GetBytes($unicode_source) + [byte[]]@(255));error='build.source_utf8_invalid:'}))
+    {
+        [IO.File]::WriteAllBytes($encoding_source, $invalid.bytes)
+        $observed_error = ''
+        try { $null = assert_owned_source_encoding $encoding_fixture }
+        catch { $observed_error = $_.Exception.Message }
+        if (-not $observed_error.StartsWith($invalid.error, [StringComparison]::Ordinal))
+        {
+            throw ('build_script.invalid_source_encoding_accepted:' + $observed_error)
+        }
+        $source_encoding_checks += 1
+    }
+    [IO.File]::WriteAllText($encoding_source, $unicode_source, $utf8_bom)
+    # Cache/vendor bytes outside the maintained roots are deliberately excluded.
+    [void][IO.Directory]::CreateDirectory((Join-Path $encoding_fixture 'build'))
+    [IO.File]::WriteAllBytes((Join-Path $encoding_fixture 'build/upstream.cpp'), [byte[]]@(255))
+    $encoding_result = assert_owned_source_encoding $encoding_fixture
+    if ($encoding_result.checked_files -ne 2)
+    {
+        throw 'build_script.unmaintained_vendor_source_scanned'
+    }
+    $source_encoding_checks += 1
+    $checks += $source_encoding_checks
+    # REGRESSION: Execute the actual bootstrap planner against generated source
+    # archives and stand-in compiler outputs. Capture both real configure argv;
+    # this tests the compiler policy at its consumer and cache-admission boundary.
+    # No network, downloaded source, or native compilation happens in this block.
+    $bootstrap_evidence = & {
+        $source_root = Join-Path $directory 'bootstrap fixture'
+        [void][IO.Directory]::CreateDirectory($source_root)
+        $compiler = Join-Path $source_root 'compiler.exe'
+        [IO.File]::WriteAllText($compiler, 'fixture compiler identity', $utf8)
+        $fixture_locks = @()
+        foreach ($name in @('cmake', 'ninja'))
+        {
+            $commit = if ($name -eq 'cmake') { 'a' * 40 } else { 'b' * 40 }
+            $repository = if ($name -eq 'cmake') { 'Kitware/CMake' } else { 'ninja-build/ninja' }
+            $archive = Join-Path $source_root ($name + '.fixture')
+            [IO.File]::WriteAllText($archive, $name + ':verified archive fixture', $utf8)
+            $fixture_locks += [PSCustomObject]@{name=$name;commit=$commit;source_archive=[PSCustomObject]@{
+                url=('https://codeload.github.com/' + $repository + '/tar.gz/' + $commit);
+                sha256=(get_file_sha256 $archive);size=(Get-Item -LiteralPath $archive).Length}}
+        }
+        [IO.File]::WriteAllText((Join-Path $source_root 'dependencies.lock.json'),
+            (@{tool_sources=$fixture_locks} | ConvertTo-Json -Depth 6), $utf8)
+        $stages = New-Object Collections.Generic.List[object]
+        function Invoke-WebRequest
+        {
+            param([switch]$UseBasicParsing, [string]$Uri, [string]$OutFile, [int]$TimeoutSec)
+            $name = if ($Uri.Contains('Kitware/CMake')) { 'cmake' } else { 'ninja' }
+            [IO.File]::Copy((Join-Path $source_root ($name + '.fixture')), $OutFile)
+        }
+        function write_event([string]$event, [hashtable]$fields = @{}) {}
+        function find_on_path([string]$name) { return $null }
+        function invoke_logged([string]$stage, [string]$executable, [string[]]$arguments)
+        {
+            $stages.Add([PSCustomObject]@{stage=$stage;arguments=$arguments})
+            if ($stage -like 'bootstrap_extract_*')
+            {
+                $name = $stage.Substring('bootstrap_extract_'.Length)
+                $entry = @($fixture_locks | Where-Object { $_.name -ceq $name })[0]
+                $prefix = if ($name -eq 'cmake') { 'CMake-' } else { 'ninja-' }
+                $extracted = Join-Path (Get-Location).Path ($prefix + $entry.commit)
+                [void][IO.Directory]::CreateDirectory($extracted)
+                [IO.File]::WriteAllText((Join-Path $extracted 'CMakeLists.txt'), 'fixture source', $utf8)
+            }
+            elseif ($stage -ceq 'bootstrap_build_ninja')
+            {
+                [void][IO.Directory]::CreateDirectory($arguments[1])
+                [IO.File]::WriteAllText((Join-Path $arguments[1] 'ninja.exe'), 'fixture ninja', $utf8)
+            }
+            elseif ($stage -ceq 'bootstrap_build_cmake')
+            {
+                $binary_directory = Join-Path $arguments[1] 'bin'
+                [void][IO.Directory]::CreateDirectory($binary_directory)
+                foreach ($name in @('cmake.exe', 'ctest.exe', 'cmcldeps.exe'))
+                {
+                    [IO.File]::WriteAllText((Join-Path $binary_directory $name), 'fixture ' + $name, $utf8)
+                }
+            }
+        }
+        $parallel_jobs = 4
+        $first = ensure_locked_tools (Join-Path $source_root 'installed cmake.exe') (Join-Path $source_root 'installed ninja.exe') $compiler '10.0.26100.0'
+        $completed = 0
+        $compile_flags = @{}
+        foreach ($stage in @('bootstrap_configure_ninja', 'bootstrap_configure_cmake'))
+        {
+            $configuration = @($stages | Where-Object { $_.stage -ceq $stage })
+            if ($configuration.Count -ne 1)
+            {
+                throw ('build_script.bootstrap_configure_missing:' + $stage)
+            }
+            foreach ($language in @('C', 'CXX'))
+            {
+                $prefix = '-DCMAKE_' + $language + '_FLAGS_INIT='
+                $options = @($configuration[0].arguments | Where-Object { $_.StartsWith($prefix, [StringComparison]::Ordinal) })
+                if ($options.Count -ne 1 -or $options[0].Substring($prefix.Length) -cne '/utf-8')
+                {
+                    throw ('build_script.bootstrap_utf8_policy_missing:' + $stage + ':' + $language)
+                }
+                $compile_flags[$language] = $options[0].Substring($prefix.Length)
+                $completed += 1
+            }
+            if (@($configuration[0].arguments | Where-Object { $_ -like '-DCMAKE_RC_FLAGS*' }).Count -ne 0)
+            {
+                throw 'build_script.bootstrap_cxx_options_leaked_to_resource_compiler'
+            }
+            $completed += 1
+        }
+        $receipt = Get-Content -LiteralPath (Join-Path $first.cache 'toolchain.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+        $old_identity = $fixture_locks[0].commit + ':' + $fixture_locks[1].commit + ':' +
+            (get_file_sha256 $compiler) + ':10.0.26100.0'
+        if ($receipt.identity -ceq $old_identity -or -not $receipt.identity.Contains('/utf-8'))
+        {
+            throw 'build_script.bootstrap_charset_missing_from_cache_identity'
+        }
+        $completed += 1
+        $stages.Clear()
+        $second = ensure_locked_tools (Join-Path $source_root 'installed cmake.exe') (Join-Path $source_root 'installed ninja.exe') $compiler '10.0.26100.0'
+        if ($stages.Count -ne 0 -or $first.cache -cne $second.cache)
+        {
+            throw 'build_script.bootstrap_verified_utf8_cache_not_reused'
+        }
+        $completed += 1
+        # Ambient flags are checked before even a verified receipt can return.
+        foreach ($name in @('CL', '_CL_', 'LINK', 'CFLAGS', 'CXXFLAGS', 'RCFLAGS'))
+        {
+            $previous = [Environment]::GetEnvironmentVariable($name, 'Process')
+            try
+            {
+                [Environment]::SetEnvironmentVariable($name, '/source-charset:.950', 'Process')
+                $observed_error = ''
+                try { $null = ensure_locked_tools 'fixture cmake.exe' 'fixture ninja.exe' $compiler '10.0.26100.0' }
+                catch { $observed_error = $_.Exception.Message }
+                if (-not $observed_error.StartsWith('build.external_flags_rejected:' + $name + ';', [StringComparison]::Ordinal) -or
+                    $stages.Count -ne 0)
+                {
+                    throw ('build_script.bootstrap_ambient_flags_accepted:' + $name + ':' + $observed_error)
+                }
+                $completed += 1
+            }
+            finally
+            {
+                [Environment]::SetEnvironmentVariable($name, $previous, 'Process')
+            }
+        }
+        return [PSCustomObject]@{checks=$completed;compile_flags=$compile_flags;fixture_directory=$source_root}
+    }
+    $bootstrap_checks = $bootstrap_evidence.checks
+    $checks += $bootstrap_checks
+    # Native regression recreates the offending UTF-8 quote at a // comment end.
+    # Explicit CP950 reproduces the user's compiler input without changing the
+    # machine locale. Then each captured C/C++ policy independently decodes the
+    # same source as UTF-8; conflicting charset switches are never combined.
+    if ([Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT)
+    {
+        $native_charset_status = 'not_run_compiler_unavailable'
+        $native_compiler = Get-Command cl.exe -CommandType Application -ErrorAction SilentlyContinue
+        if ($null -ne $native_compiler)
+        {
+            $native_source = Join-Path $directory 'utf8_source.c'
+            $native_object = Join-Path $directory 'utf8_source.obj'
+            $native_log = Join-Path $directory 'utf8_source.log'
+            $native_text = "// declaration ‘rand_s’`n#if defined(__MINGW32__)`ntypedef int fixture_mingw_branch;`n#endif`nint fixture_value(void) { return 7; }`n"
+            [IO.File]::WriteAllText($native_source, $native_text, $utf8)
+            $native_preference = $ErrorActionPreference
+            try
+            {
+                # PS5.1 wraps native stderr as ErrorRecord even for expected
+                # compiler failures. The native exit code is decisive here.
+                $ErrorActionPreference = 'Continue'
+                & $native_compiler.Source /nologo /c /TC /source-charset:.950 /MT /O2 ('/Fo' + $native_object) $native_source *> $native_log
+                $native_exit_code = $LASTEXITCODE
+                if ($native_exit_code -eq 0 -or -not [IO.File]::ReadAllText($native_log).Contains('C1020'))
+                {
+                    throw ('build_script.cp950_regression_fixture_did_not_reproduce:' + [IO.File]::ReadAllText($native_log))
+                }
+                $native_charset_checks += 1
+                # The failing source above models an immutable BOM-less upstream
+                # dependency. Owned positive fixtures carry BOM, and their narrow
+                # and wide literals check execution and source charset together.
+                $native_text += 'typedef char fixture_utf8_execution[(sizeof("é中") == 6) ? 1 : -1];' + "`n"
+                $native_text += "typedef char fixture_utf8_source[(L'中' == 0x4e2d) ? 1 : -1];`n"
+                [IO.File]::WriteAllText($native_source, $native_text, $utf8_bom)
+                foreach ($language in @('C', 'CXX'))
+                {
+                    $language_option = if ($language -ceq 'C') { '/TC' } else { '/TP' }
+                    $native_arguments = @('/nologo', '/c', $language_option,
+                        $bootstrap_evidence.compile_flags[$language], '/MT', '/O2', ('/Fo' + $native_object), $native_source)
+                    & $native_compiler.Source @native_arguments *> $native_log
+                    $native_exit_code = $LASTEXITCODE
+                    if ($native_exit_code -ne 0 -or -not [IO.File]::Exists($native_object))
+                    {
+                        throw ('build_script.bootstrap_utf8_native_compile_failed:' + $language + ':' + [IO.File]::ReadAllText($native_log))
+                    }
+                    [IO.File]::Delete($native_object)
+                    $native_charset_checks += 1
+                }
+                $native_charset_status = 'passed'
+            }
+            finally
+            {
+                $ErrorActionPreference = $native_preference
+            }
+        }
+    }
+    $checks += $native_charset_checks
     # CONTRACT: Both entry scripts remain standalone. Their small hash helpers
     # must stay identical and operate even when command-based hashing is absent.
     $hash_checks = & {
@@ -435,7 +662,7 @@ try
     # CONTRACT: Exercise the actual process-logging helper against an argv-capture
     # child using the current PowerShell host. This proves argument preservation in
     # the running host only, not native mt.exe extraction or Windows PowerShell 5.1.
-    [IO.File]::WriteAllText($capture_script, '[Console]::OutputEncoding = New-Object Text.UTF8Encoding($false); [Console]::Out.WriteLine((@{schema="secure_erase.test.argv.v1";arguments=@([Environment]::GetCommandLineArgs())} | ConvertTo-Json -Compress)); exit 0', $utf8)
+    [IO.File]::WriteAllText($capture_script, '[Console]::OutputEncoding = New-Object Text.UTF8Encoding($false); [Console]::Out.WriteLine((@{schema="secure_erase.test.argv.v1";arguments=@([Environment]::GetCommandLineArgs())} | ConvertTo-Json -Compress)); exit 0', $utf8_bom)
     $child_host = [Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
     $input_argument = '-inputresource:' + (Join-Path $directory 'binary with spaces.exe') + ';#1'
     $output_argument = '-out:' + (Join-Path $directory 'manifest with spaces.xml')
@@ -501,13 +728,11 @@ try
     }
     $checks += 1
     $manifest_checks += 1
-    [Console]::Out.WriteLine((@{schema='secure_erase.test.v1';suite='build_script_helpers';checks=$checks;manifest_checks=$manifest_checks;hash_checks=$hash_checks;status='passed'} | ConvertTo-Json -Compress))
+    [Console]::Out.WriteLine((@{schema='secure_erase.test.v1';suite='build_script_helpers';checks=$checks;manifest_checks=$manifest_checks;hash_checks=$hash_checks;
+        bootstrap_checks=$bootstrap_checks;source_encoding_checks=$source_encoding_checks;
+        native_charset_checks=$native_charset_checks;native_charset_status=$native_charset_status;status='passed'} | ConvertTo-Json -Compress))
 }
 finally
 {
-    foreach ($created_file in @($fixture, $capture_script, $capture_log, $hash_fixture))
-    {
-        [IO.File]::Delete($created_file)
-    }
-    [IO.Directory]::Delete($directory)
+    [IO.Directory]::Delete($directory, $true)
 }

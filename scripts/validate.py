@@ -37,7 +37,8 @@ def check_sources(root: Path) -> tuple[list[dict], list[dict]]:
     problems = []
     snapshots = []
     forbidden = {'build', 'build_logs', 'reports', 'out', 'dist', 'third_party', '__pycache__', '.git'}
-    bom_suffixes = {'.cpp', '.ixx', '.cppm', '.md', '.py', '.ps1', '.cmake', '.rc', '.manifest', '.svg'}
+    bom_suffixes = {'.c', '.cc', '.cpp', '.cxx', '.h', '.hh', '.hpp', '.hxx', '.inc', '.inl', '.ipp', '.tpp',
+                    '.ixx', '.cppm', '.md', '.py', '.ps1', '.cmake', '.rc', '.manifest', '.svg'}
     host_exceptions = {'.gitignore', '.gitattributes', '.editorconfig', 'LICENSE'}
     for path in files(root):
         relative = path.relative_to(root).as_posix()
@@ -54,6 +55,13 @@ def check_sources(root: Path) -> tuple[list[dict], list[dict]]:
                 json.loads(data.decode('utf-8'))
             except (ValueError, UnicodeError):
                 error('json_invalid_or_bom')
+        elif path.suffix in {'.yaml', '.yml', '.jsonl'}:
+            try:
+                data.decode('utf-8')
+                if data.startswith(b'\xef\xbb\xbf'):
+                    error('machine_format_requires_utf8_without_bom')
+            except UnicodeError:
+                error('text_invalid_utf8')
         elif path.suffix == '.bat':
             if any(byte > 127 for byte in data) or b'\n' in data.replace(b'\r\n', b''):
                 error('bat_requires_ascii_crlf')
@@ -123,11 +131,14 @@ def main() -> int:
         commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, stderr=subprocess.DEVNULL, text=True).strip()
     except subprocess.CalledProcessError:
         commit = None
-    report = {'schema': 'windows_agent_cleanup.validation.v1', 'generated_at': datetime.now(timezone.utc).isoformat(),
+    report = {'schema': 'windows_agent_cleanup.validation.v2', 'generated_at': datetime.now(timezone.utc).isoformat(),
               'source_commit': commit, 'source_snapshot': snapshot, 'checks': commands, 'runtime': runtime,
               'host': {'platform': sys.platform, 'python': sys.version},
-              'source_checks_passed': passed, 'source_rc_eligible': passed and runtime['status'] == 'passed',
-              'release_eligible': False,
+              'source_checks_passed': passed, 'test_source_eligible': passed and runtime['status'] == 'passed',
+              'distribution_kind': 'development_test_source',
+              'version': '2.0.0-dev.1', 'status': 'unpublished_development_test_source',
+              'publication_allowed': False, 'owner_acceptance': 'not_received',
+              'source_rc_eligible': False, 'release_eligible': False,
               'native_windows': {'status': 'safe_tests_passed' if sys.platform == 'win32' and runtime['status'] == 'passed' else 'not_run',
                                  'scope': 'this host safe test executables only; import build/isolated/GUI/hardware evidence separately'},
               'hardware_matrix': {'status': 'not_run', 'owner': 'user'},
@@ -135,7 +146,9 @@ def main() -> int:
     report_path = directory / 'validation_report.json'
     report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     print(json.dumps({'status': 'passed' if passed else 'failed', 'report': str(report_path),
-                      'runtime': runtime, 'source_rc_eligible': report['source_rc_eligible']}))
+                      'runtime': runtime, 'test_source_eligible': report['test_source_eligible'],
+                      'publication_allowed': False, 'owner_acceptance': 'not_received',
+                      'source_rc_eligible': False, 'release_eligible': False}))
     return 0 if passed and (not args.build_dir or runtime['status'] == 'passed') else 1
 
 

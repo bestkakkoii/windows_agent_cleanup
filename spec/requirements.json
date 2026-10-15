@@ -1000,7 +1000,7 @@
         "tests/state_store_windows_tests.cpp"
       ],
       "test_evidence_kind": "source_locations_not_pass_claims",
-      "scope_note": "This candidate is source RC only, not a tested native binary or Release. Missing native evidence stays not_run."
+      "scope_note": "Current distribution is unpublished development test source. Owner-returned Windows build/test evidence and review are required before RC or Release publication; missing native evidence stays not_run."
     },
     {
       "id": "R40",
@@ -1487,7 +1487,7 @@
       "scope_note": "Unit/portable integration evidence is generated locally; mandatory native isolated and media matrix tests remain owner-run gates."
     }
   ],
-  "module_architecture_revision": "2.0.0-rc.1",
+  "module_architecture_revision": "2.0.0-dev.1",
   "current_amendment": "spec/project.json",
   "current_validation_location": "CI artifacts and release evidence, never a tracked per-run report",
   "current_cleanup_amendment": "spec/quick_cleanup.json"

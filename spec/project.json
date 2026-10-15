@@ -1,6 +1,6 @@
 {
   "schema": "windows_agent_cleanup.project.v2",
-  "version": "2.0.0-rc.1",
+  "version": "2.0.0-dev.1",
   "repository": "https://github.com/bestkakkoii/windows_agent_cleanup",
   "implementation_authorized": "2026-10-15",
   "normal_commit_and_push_authorized": true,
@@ -14,7 +14,7 @@
     "cli": "native_machine_only",
     "mcp": false,
     "universal_agent_entry": "README_AI.md",
-    "skills": "optional thin portable routing"
+    "skills": "optional complete portable procedural bundle with progressive disclosure"
   },
   "invariants": [
     "whole-batch membership frozen before deletion",
@@ -34,7 +34,7 @@
   "evidence": {
     "windows_compilation_and_hardware_owner": "user; CI may supply separately scoped native evidence",
     "required_test_gates": "57 approved base decisions and risk-specific tests",
-    "missing_platform_evidence": "RC only"
+    "missing_platform_evidence": "no Release; scoped RC only after owner evidence review"
   },
   "git_policy": {
     "tracked": "maintained source/config/docs/assets/tests and immutable dependency locks",
@@ -47,5 +47,32 @@
       "archives",
       "temporary handoffs"
     ]
+  },
+  "publication": {
+    "status": "withheld_pending_owner_evidence",
+    "automatic_publication": false,
+    "ci_distribution": "unpublished development test artifacts only",
+    "owner_returned_windows_build_and_test_evidence_required_for": [
+      "RC",
+      "Release"
+    ],
+    "evidence_binding": [
+      "source_commit",
+      "source_archive_sha256",
+      "compiler_sdk",
+      "os_build",
+      "test_results"
+    ],
+    "full_release_latest": "only after all applicable mandatory acceptance gates pass"
+  },
+  "encoding": {
+    "owned_source_files": "UTF-8+BOM; enforced before Windows build and by source validation",
+    "compiler_input": "explicit UTF-8 for C/C++ bootstrap, project, tests, probes and vendor modules",
+    "immutable_dependencies": "locked upstream bytes preserved; explicit UTF-8 compilation",
+    "host_exceptions": {
+      "SKILL.md": "UTF-8 without BOM; frontmatter starts at first byte",
+      "json_jsonl_yaml": "UTF-8 without BOM",
+      "bat": "ASCII CRLF bootstrap; UTF-8 subset"
+    }
   }
 }

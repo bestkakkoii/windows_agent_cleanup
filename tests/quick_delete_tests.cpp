@@ -1,11 +1,13 @@
 ﻿import std;
 import secure_erase.quick_delete;
+import secure_erase.quick_feedback;
 import secure_erase.platform;
 
 namespace
 {
 namespace quick = secure_erase::quick;
 namespace engine = secure_erase::engine;
+namespace feedback = secure_erase::quick::feedback;
 
 struct test_results
 {
@@ -71,8 +73,6 @@ public:
     bool fail_query{};
     bool fail_close{};
     bool close_device_fault{};
-    bool contention_penalty{};
-    bool flat_throughput_penalty{};
     std::mutex mutex;
 
     void add(const quick::plan& plan)
@@ -142,11 +142,9 @@ public:
 
     engine::result<void> remove(const quick::target& target, bool recover_access) override
     {
-        std::size_t admitted_concurrency = 1;
         {
             const std::scoped_lock lock(mutex);
             ++active;
-            admitted_concurrency = active;
             if (resource_samples == 1)
             {
                 maximum_first_sample_active = std::max(maximum_first_sample_active, active);
@@ -158,9 +156,7 @@ public:
         }
         if (records.at(target.path).delay)
         {
-            const auto penalty = contention_penalty ? admitted_concurrency * admitted_concurrency :
-                flat_throughput_penalty ? admitted_concurrency : 1;
-            std::this_thread::sleep_for(std::chrono::milliseconds(records.at(target.path).delay_milliseconds * penalty));
+            std::this_thread::sleep_for(std::chrono::milliseconds(records.at(target.path).delay_milliseconds));
         }
         const std::scoped_lock lock(mutex);
         --active;
@@ -1129,43 +1125,131 @@ int main()
         results.check(report && observed_limit == 1, "unknown_cpu_pressure_uses_conservative_single_worker");
     }
     {
+        // Test the production reducer with exact completed-window observations;
+        // sleep durations cannot promise a rate on a loaded Windows runner.
+        const auto window = [](feedback::state& state, double rate = 250.0,
+            double latency = 4'000'000.0)
+        {
+            return feedback::observe_window(state, rate, latency, false, 4, 128, true);
+        };
+        const auto begin_probe = [&]()
+        {
+            feedback::state state;
+            static_cast<void>(window(state));
+            static_cast<void>(window(state));
+            return state;
+        };
+        feedback::state state;
+        const auto first = window(state);
+        const bool first_stable = first == feedback::adjustment::unchanged &&
+            state.limit == 1 && state.stable_windows == 1 && !state.probing;
+        const auto second = window(state);
+        results.check(first_stable && second == feedback::adjustment::increase &&
+            state.limit == 2 && state.probing && state.baseline_rate == 250.0 &&
+            state.baseline_latency == 4'000'000.0,
+            "stable_success_windows_probe_above_initial_device_hint");
+
+        const auto first_flat = window(state);
+        const bool flat_pending = first_flat == feedback::adjustment::unchanged &&
+            state.limit == 2 && state.probing && state.probe_windows == 1 &&
+            state.profitable_windows == 0;
+        const auto second_flat = window(state);
+        results.check(flat_pending && second_flat == feedback::adjustment::decrease &&
+            state.limit == 1 && !state.probing && state.cooldown == 3,
+            "flat_throughput_rejects_unprofitable_extra_concurrency");
+
+        bool cooled_down = true;
+        for (unsigned remaining = 3; remaining != 0; --remaining)
+        {
+            const auto change = window(state);
+            cooled_down = cooled_down && change == feedback::adjustment::unchanged &&
+                state.limit == 1 && state.stable_windows == 0 && state.cooldown == remaining - 1;
+        }
+        const auto after_cooldown = window(state);
+        const bool waits_for_stability = after_cooldown == feedback::adjustment::unchanged &&
+            state.limit == 1 && state.stable_windows == 1;
+        const auto reprobe = window(state);
+        results.check(cooled_down && waits_for_stability && reprobe == feedback::adjustment::increase &&
+            state.limit == 2 && state.probing,
+            "feedback_rollback_requires_cooldown_and_two_new_stable_windows");
+
+        state = begin_probe();
+        const auto regressed = window(state, 200.0);
+        results.check(regressed == feedback::adjustment::decrease && state.limit == 1 &&
+            !state.probing && state.probe_windows == 1 && state.cooldown == 3,
+            "throughput_regression_with_unchanged_latency_rolls_back_immediately");
+
+        state = begin_probe();
+        const auto contended = window(state, 250.0, 8'000'000.0);
+        results.check(contended == feedback::adjustment::decrease && state.limit == 1 &&
+            !state.probing && state.cooldown == 3,
+            "contention_without_throughput_gain_rolls_back_with_hysteresis");
+
+        state = begin_probe();
+        const auto first_profitable = window(state, 275.0);
+        const bool one_gain_pending = first_profitable == feedback::adjustment::unchanged &&
+            state.limit == 2 && state.probing && state.profitable_windows == 1;
+        const auto second_profitable = window(state, 275.0);
+        results.check(one_gain_pending && second_profitable == feedback::adjustment::unchanged &&
+            state.limit == 2 && !state.probing && state.profitable_windows == 2 && state.cooldown == 0,
+            "two_profitable_windows_keep_the_probed_worker");
+
+        state = begin_probe();
+        static_cast<void>(window(state, 275.0));
+        const auto inconsistent_gain = window(state);
+        results.check(inconsistent_gain == feedback::adjustment::decrease && state.limit == 1 &&
+            !state.probing && state.profitable_windows == 1 && state.cooldown == 3,
+            "one_profitable_window_cannot_keep_an_unprofitable_probe");
+
+        state = begin_probe();
+        static_cast<void>(window(state, 262.5, 6'000'000.0));
+        const auto threshold_gain = window(state, 262.5, 6'000'000.0);
+        results.check(threshold_gain == feedback::adjustment::unchanged && state.limit == 2 &&
+            !state.probing && state.profitable_windows == 2,
+            "feedback_profitability_thresholds_are_inclusive");
+
+        state = begin_probe();
+        const auto pressure = feedback::observe_window(state, 275.0, 4'000'000.0, true, 4, 128, true);
+        results.check(pressure == feedback::adjustment::decrease && state.limit == 1 &&
+            !state.probing && state.stable_windows == 0 && state.cooldown == 3,
+            "feedback_pressure_overrides_a_profitable_probe");
+    }
+    {
         std::vector<quick::target> targets;
-        for (std::size_t index = 0; index < 128; ++index)
+        for (std::size_t index = 0; index < 64; ++index)
         {
             targets.push_back(make_target("/feedback/" + std::to_string(index)));
         }
         const auto plan = frozen(std::move(targets));
-        for (const bool flat_throughput : {false, true})
+        test_backend host;
+        host.add(plan);
+        for (auto& [path, value] : host.records)
         {
-            test_backend host;
-            host.add(plan);
-            host.contention_penalty = !flat_throughput;
-            host.flat_throughput_penalty = flat_throughput;
-            for (auto& [path, value] : host.records)
-            {
-                static_cast<void>(path);
-                value.delay = true;
-                value.delay_milliseconds = 4;
-            }
-            host.resource_adjustment = [](auto& sample, auto)
-            {
-                for (auto& device : sample.devices)
-                {
-                    device.concurrency_hint = 1;
-                }
-            };
-            engine::control control;
-            quick::progress final_progress;
-            const auto report = execute(plan, host, control, [&](const auto& update)
-            {
-                final_progress = update;
-            });
-            results.check(report && report->status == "completed" && final_progress.concurrency_increases > 0,
-                "stable_success_windows_probe_above_initial_device_hint");
-            results.check(final_progress.concurrency_decreases > 0 && host.maximum_active <= 4,
-                flat_throughput ? "flat_throughput_rejects_unprofitable_extra_concurrency" :
-                    "contention_without_throughput_gain_rolls_back_with_hysteresis");
+            static_cast<void>(path);
+            value.delay = true;
+            value.delay_milliseconds = 4;
         }
+        host.resource_adjustment = [](auto& sample, auto)
+        {
+            for (auto& device : sample.devices)
+            {
+                device.concurrency_hint = 1;
+            }
+        };
+        engine::control control;
+        quick::progress final_progress;
+        const auto report = execute(plan, host, control, [&](const auto& update)
+        {
+            final_progress = update;
+        }, nullptr, {2, true});
+        results.check(report && report->status == "completed" && report->targets.size() == 64 &&
+            final_progress.attempted == 64 && final_progress.completed == 64 &&
+            final_progress.worker_limit == 2 && host.maximum_active <= 2 &&
+            host.begins == 1 && host.finishes == 1 && host.queries == 0 &&
+            std::all_of(host.records.begin(), host.records.end(), [](const auto& entry)
+            {
+                return entry.second.attempts == 1 && entry.second.deleted;
+            }), "feedback_scheduler_completes_real_worker_queue_with_admitted_bound");
     }
     {
         std::vector<quick::target> targets;

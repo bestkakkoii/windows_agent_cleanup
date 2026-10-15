@@ -8,22 +8,33 @@ import subprocess
 import tempfile
 import warnings
 import zipfile
+from unittest import mock
 
 verify = runpy.run_path(str(Path(__file__).resolve().parents[1] / 'scripts/verify_package.py'))['verify']
 commit = 'a' * 40
 checks = 0
 
 
-def fixture(path, mutation=None):
+def development_metadata():
+    return {'version': '2.0.0-dev.1', 'status': 'unpublished_development_test_source',
+            'distribution_kind': 'development_test_source', 'test_source_eligible': True,
+            'publication_allowed': False, 'owner_acceptance': 'not_received',
+            'source_rc_eligible': False, 'release_eligible': False}
+
+
+def fixture(path, mutation=None, manifest_changes=None, validation_changes=None):
     content = {'source.txt': b'owned source\n'}
     digest = hashlib.sha256(content['source.txt']).hexdigest()
-    validation = {'source_commit': commit, 'source_rc_eligible': True, 'release_eligible': False,
+    validation = {**development_metadata(), 'schema': 'windows_agent_cleanup.validation.v2',
+                  'source_commit': commit, 'source_checks_passed': True, 'runtime': {'status': 'passed'},
                   'source_snapshot': [{'path': 'source.txt', 'sha256': digest}]}
+    validation.update(validation_changes or {})
     content['evidence/validation_report.json'] = json.dumps(validation).encode()
-    manifest = {'schema': 'windows_agent_cleanup.package.v1', 'source_commit': commit,
-                'release_eligible': False, 'manifest_self_hash_excluded': True,
+    manifest = {**development_metadata(), 'schema': 'windows_agent_cleanup.package.v2', 'source_commit': commit,
+                'manifest_self_hash_excluded': True,
                 'files': [{'path': p, 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()}
                           for p, data in content.items()]}
+    manifest.update(manifest_changes or {})
     content['package_manifest.json'] = json.dumps(manifest).encode()
     entries = [('windows_agent_cleanup/' + name, data, False) for name, data in content.items()]
     if mutation:
@@ -56,7 +67,13 @@ with tempfile.TemporaryDirectory(prefix='cleanup_archive_fixture_') as temp:
     path = Path(temp) / 'fixture.zip'
     fixture(path)
     checksum = hashlib.sha256(path.read_bytes()).hexdigest()
-    check('valid_archive_commit_and_checksum', lambda: verify(path, commit, checksum))
+    def unpublished_archive():
+        result = verify(path, commit, checksum)
+        if (result['test_source_eligible'] is not True or result['publication_allowed'] is not False
+                or result['owner_acceptance'] != 'not_received' or result['source_rc_eligible'] is not False
+                or result['release_eligible'] is not False):
+            raise ValueError('archive_verifier_promoted_unaccepted_sources')
+    check('valid_archive_commit_and_checksum', unpublished_archive)
     check('wrong_expected_commit_rejected', lambda: verify(path, 'b' * 40), True)
     check('wrong_expected_checksum_rejected', lambda: verify(path, commit, '0' * 64), True)
     def corrupted(entries):
@@ -79,6 +96,21 @@ with tempfile.TemporaryDirectory(prefix='cleanup_archive_fixture_') as temp:
         if set(Path(temp).iterdir()) != {path}:
             raise ValueError('verifier_created_unexpected_output')
     check('fixture_scope_retains_only_owned_archive', no_unexpected_outputs)
+    for field, value in {'schema': 'windows_agent_cleanup.package.v1', 'version': '2.0.0-rc.1',
+                         'status': 'source_rc_windows_hardware_validation_pending',
+                         'distribution_kind': 'release', 'test_source_eligible': False,
+                         'publication_allowed': True, 'owner_acceptance': 'received',
+                         'source_rc_eligible': True, 'release_eligible': True}.items():
+        fixture(path, manifest_changes={field: value})
+        check('package_rejects_promoted_or_invalid_' + field, lambda: verify(path), True)
+    for field, value in {'schema': 'windows_agent_cleanup.validation.v1', 'source_commit': 'b' * 40,
+                         'version': '2.0.0-rc.1', 'status': 'approved', 'distribution_kind': 'release',
+                         'test_source_eligible': False, 'source_checks_passed': False,
+                         'runtime': {'status': 'not_run'}, 'publication_allowed': True,
+                         'owner_acceptance': 'received', 'source_rc_eligible': True,
+                         'release_eligible': True, 'source_snapshot': []}.items():
+        fixture(path, validation_changes={field: value})
+        check('validation_rejects_rehashed_invalid_' + field, lambda: verify(path), True)
 with tempfile.TemporaryDirectory(prefix='cleanup_package_fixture_') as temp:
     root = Path(temp) / 'source'
     (root / 'scripts').mkdir(parents=True)
@@ -105,8 +137,10 @@ with tempfile.TemporaryDirectory(prefix='cleanup_package_fixture_') as temp:
     snapshot = [{'path': name, 'sha256': hashlib.sha256((root / name).read_bytes()).hexdigest()}
                 for name in git('ls-files').decode().splitlines()]
     validation = Path(temp) / 'validation.json'
-    validation.write_text(json.dumps({'source_rc_eligible': True, 'release_eligible': False,
-                                     'source_snapshot': snapshot}), encoding='utf-8')
+    validated = {**development_metadata(), 'schema': 'windows_agent_cleanup.validation.v2',
+                 'source_commit': fixture_commit, 'source_checks_passed': True,
+                 'runtime': {'status': 'passed'}, 'source_snapshot': snapshot}
+    validation.write_text(json.dumps(validated), encoding='utf-8')
     evidence = Path(temp) / 'fixture_evidence.json'
     evidence.write_text('{"scope": "synthetic archive-format fixture only"}', encoding='utf-8')
     output = Path(temp) / 'source.zip'
@@ -144,6 +178,25 @@ with tempfile.TemporaryDirectory(prefix='cleanup_package_fixture_') as temp:
             raise ValueError('missing_offline_dependency_accepted')
     check('actual_packager_rejects_missing_offline_dependency', rejects_missing_dependency)
     dependency_file.write_bytes(dependency_bytes)
+    def rejects_promoted_report():
+        changed = dict(validated, publication_allowed=True, source_rc_eligible=True)
+        validation.write_text(json.dumps(changed), encoding='utf-8')
+        try:
+            result = subprocess.run(command, cwd=root, capture_output=True, text=True)
+            if result.returncode == 0 or 'unpublished_test_source_validation_required' not in result.stderr:
+                raise ValueError('promoted_validation_accepted')
+        finally:
+            validation.write_text(json.dumps(validated), encoding='utf-8')
+    check('actual_packager_rejects_ci_report_promoted_to_rc', rejects_promoted_report)
+    git('-c', 'user.name=archive_fixture', '-c', 'user.email=fixture@example.invalid',
+        'commit', '--allow-empty', '-qm', 'same bytes different source revision')
+    def rejects_stale_commit():
+        result = subprocess.run(command, cwd=root, capture_output=True, text=True)
+        if result.returncode == 0 or 'validation_source_commit_mismatched' not in result.stderr:
+            raise ValueError('validation_source_commit_silently_rebound')
+    check('actual_packager_rejects_stale_commit_with_identical_source_bytes', rejects_stale_commit)
+    validated['source_commit'] = git('rev-parse', 'HEAD').decode().strip()
+    validation.write_text(json.dumps(validated), encoding='utf-8')
     (root / 'source.txt').write_text('changed source\n', encoding='utf-8')
     def rejects_dirty():
         result = subprocess.run(command, cwd=root, capture_output=True, text=True)
@@ -152,9 +205,31 @@ with tempfile.TemporaryDirectory(prefix='cleanup_package_fixture_') as temp:
     check('actual_packager_rejects_uncommitted_sources', rejects_dirty)
     git('add', 'source.txt')
     git('-c', 'user.name=archive_fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'changed fixture')
+    validated['source_commit'] = git('rev-parse', 'HEAD').decode().strip()
+    validation.write_text(json.dumps(validated), encoding='utf-8')
     def rejects_stale_validation():
         result = subprocess.run(command, cwd=root, capture_output=True, text=True)
         if result.returncode == 0 or 'source_membership_or_bytes_changed_after_validation' not in result.stderr:
             raise ValueError('stale_validation_not_rejected')
     check('actual_packager_rejects_stale_validation', rejects_stale_validation)
+with tempfile.TemporaryDirectory(prefix='cleanup_acceptance_fixture_') as temp:
+    module = runpy.run_path(str(Path(__file__).resolve().parents[1] / 'scripts/validate.py'))
+    main = module['main']
+    def fake_execute(command, root, directory, name):
+        if name == 'ctest':
+            (directory / 'ctest.xml').write_text('<testsuite><testcase name="safe_fixture"/></testsuite>', encoding='utf-8')
+        return {'name': name, 'status': 'passed', 'exit_code': 0}
+    globals_ = main.__globals__
+    with mock.patch.dict(globals_, {'check_sources': lambda root: ([], []), 'execute': fake_execute}), \
+            mock.patch.object(__import__('sys'), 'argv', ['validate.py', '--output-dir', temp,
+                                                        '--build-dir', temp, '--skip-build']):
+        result = main()
+    report = json.loads((Path(temp) / 'validation_report.json').read_text(encoding='utf-8'))
+    def ci_never_promotes():
+        if (result != 0 or report['test_source_eligible'] is not True
+                or report['runtime']['status'] != 'passed' or report['publication_allowed'] is not False
+                or report['owner_acceptance'] != 'not_received' or report['source_rc_eligible'] is not False
+                or report['release_eligible'] is not False):
+            raise ValueError('safe_ci_pass_promoted_unaccepted_sources')
+    check('actual_validation_safe_ci_pass_never_authorizes_publication', ci_never_promotes)
 print(json.dumps({'suite': 'source_archive_integrity', 'checks': checks, 'status': 'passed'}))

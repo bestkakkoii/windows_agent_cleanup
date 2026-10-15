@@ -6,7 +6,7 @@ export namespace secure_erase::metadata
 {
     [[nodiscard]] constexpr const char* version() noexcept
     {
-        return "2.0.0-rc.1";
+        return "2.0.0-dev.1";
     }
 
     [[nodiscard]] constexpr const char* product_name() noexcept

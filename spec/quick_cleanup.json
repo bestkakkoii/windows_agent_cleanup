@@ -1,6 +1,6 @@
 {
   "schema": "windows_agent_cleanup.quick_cleanup.v2",
-  "version": "2.0.0-rc.1",
+  "version": "2.0.0-dev.1",
   "authority": "Owner-approved redesign, implementation authorized 2026-10-15",
   "platform": "Windows11+ x64; minimum build22000",
   "interfaces": {

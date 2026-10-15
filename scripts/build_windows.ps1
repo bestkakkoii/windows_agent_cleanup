@@ -48,6 +48,74 @@ function get_file_sha256([string]$path)
     }
 }
 
+function assert_no_external_build_flags
+{
+    foreach ($override in @('CL', '_CL_', 'LINK', 'CFLAGS', 'CXXFLAGS', 'RCFLAGS'))
+    {
+        if (-not [string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable($override, 'Process')))
+        {
+            throw ('build.external_flags_rejected:' + $override + '; clear it in this console to preserve the reviewed UTF-8 build flags')
+        }
+    }
+}
+
+function assert_owned_source_encoding([string]$root)
+{
+    # CONTRACT: Inspect only maintained source locations, never build/cache,
+    # downloaded third-party bytes, SDKs, or the surrounding filesystem. Decode
+    # in bounded chunks with exceptions enabled; a BOM alone is not sufficient.
+    $extensions = @('.c', '.cc', '.cpp', '.cxx', '.h', '.hh', '.hpp', '.hxx', '.inc', '.inl', '.ipp', '.tpp',
+        '.ixx', '.cppm', '.rc', '.manifest', '.cmake', '.ps1', '.py')
+    $source_files = New-Object Collections.Generic.List[object]
+    $source_files.Add((Get-Item -LiteralPath (Join-Path $root 'CMakeLists.txt')))
+    foreach ($directory in @('src', 'tests', 'scripts', 'cmake'))
+    {
+        $path = Join-Path $root $directory
+        if (Test-Path -LiteralPath $path -PathType Container)
+        {
+            foreach ($file in (Get-ChildItem -LiteralPath $path -File -Recurse -Force))
+            {
+                if ($extensions -contains $file.Extension.ToLowerInvariant() -or $file.Name -ceq 'CMakeLists.txt')
+                {
+                    $source_files.Add($file)
+                }
+            }
+        }
+    }
+    $strict_utf8 = New-Object Text.UTF8Encoding($false, $true)
+    $buffer = New-Object char[] 4096
+    foreach ($file in $source_files)
+    {
+        $relative = $file.FullName.Substring([IO.Path]::GetFullPath($root).TrimEnd([IO.Path]::DirectorySeparatorChar).Length)
+        $stream = [IO.File]::Open($file.FullName, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+        try
+        {
+            if ($stream.ReadByte() -ne 239 -or $stream.ReadByte() -ne 187 -or $stream.ReadByte() -ne 191)
+            {
+                throw ('build.source_bom_missing:' + $relative)
+            }
+            $reader = New-Object IO.StreamReader($stream, $strict_utf8, $false, 4096, $true)
+            try
+            {
+                while ($reader.Read($buffer, 0, $buffer.Length) -gt 0) {}
+            }
+            catch [Text.DecoderFallbackException]
+            {
+                throw ('build.source_utf8_invalid:' + $relative)
+            }
+            finally
+            {
+                $reader.Dispose()
+            }
+        }
+        finally
+        {
+            $stream.Dispose()
+        }
+    }
+    return [PSCustomObject]@{checked_files=$source_files.Count;encoding='utf8_bom';strict_utf8=$true}
+}
+
 function write_event([string]$event, [hashtable]$fields = @{})
 {
     $record = [ordered]@{schema='secure_erase.build_event.v1';time_utc=[DateTime]::UtcNow.ToString('o');run_id=$run_id;event=$event}
@@ -527,6 +595,9 @@ function locate_tool([string]$name, [string[]]$fallbacks)
 function ensure_locked_tools([string]$bootstrap_cmake, [string]$bootstrap_ninja,
     [string]$compiler, [string]$sdk_version)
 {
+    # Recheck at cache admission as well as before/after vcvars. Compiler
+    # environment overrides cannot silently alter an otherwise verified tool.
+    assert_no_external_build_flags
     $lock_path = Join-Path $source_root 'dependencies.lock.json'
     $lock = Get-Content -LiteralPath $lock_path -Raw -Encoding UTF8 | ConvertFrom-Json
     $cmake_lock = @($lock.tool_sources | Where-Object { $_.name -eq 'cmake' })
@@ -547,8 +618,14 @@ function ensure_locked_tools([string]$bootstrap_cmake, [string]$bootstrap_ninja,
             throw 'bootstrap.tool_lock_invalid'
         }
     }
+    # CONTRACT: Console chcp affects output, not MSVC source decoding. Every
+    # bootstrap C/C++ translation unit must decode immutable upstream UTF-8
+    # sources consistently on every Windows ANSI code page, including 950.
+    # Include the exact compile policy in the cache key so an older receipt
+    # cannot bypass a changed source-decoding contract. RC flags stay separate.
+    $compile_options = @('-DCMAKE_C_FLAGS_INIT=/utf-8', '-DCMAKE_CXX_FLAGS_INIT=/utf-8')
     $compiler_digest = get_file_sha256 $compiler
-    $identity_text = $cmake_lock.commit + ':' + $ninja_lock.commit + ':' + $compiler_digest + ':' + $sdk_version
+    $identity_text = $cmake_lock.commit + ':' + $ninja_lock.commit + ':' + $compiler_digest + ':' + $sdk_version + ':' + ($compile_options -join ';')
     $algorithm = [Security.Cryptography.SHA256]::Create()
     try
     {
@@ -676,7 +753,7 @@ function ensure_locked_tools([string]$bootstrap_cmake, [string]$bootstrap_ninja,
         $ninja_configure = @('-S',$sources.ninja,'-B',$ninja_build,'-G',$generator,
             '-DCMAKE_BUILD_TYPE=Release','-DBUILD_TESTING=OFF',('-DCMAKE_CXX_COMPILER=' + $compiler),
             '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded','-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=',
-            '-DCMAKE_EXE_LINKER_FLAGS_RELEASE=/INCREMENTAL:NO /DEBUG:NONE')
+            '-DCMAKE_EXE_LINKER_FLAGS_RELEASE=/INCREMENTAL:NO /DEBUG:NONE') + $compile_options
         if ($bootstrap_ninja)
         {
             $ninja_configure += '-DCMAKE_MAKE_PROGRAM=' + $bootstrap_ninja
@@ -688,11 +765,12 @@ function ensure_locked_tools([string]$bootstrap_cmake, [string]$bootstrap_ninja,
         invoke_logged 'bootstrap_configure_ninja' $bootstrap_cmake $ninja_configure
         $tool_jobs = [Math]::Min(4, $parallel_jobs)
         invoke_logged 'bootstrap_build_ninja' $bootstrap_cmake @('--build',$ninja_build,'--config','Release','--parallel',$tool_jobs.ToString())
-        invoke_logged 'bootstrap_configure_cmake' $bootstrap_cmake @('-S',$sources.cmake,'-B',$cmake_build,'-G','Ninja',
+        $cmake_configure = @('-S',$sources.cmake,'-B',$cmake_build,'-G','Ninja',
             ('-DCMAKE_MAKE_PROGRAM=' + $ninja_binary),('-DCMAKE_C_COMPILER=' + $compiler),('-DCMAKE_CXX_COMPILER=' + $compiler),
             '-DCMAKE_BUILD_TYPE=Release','-DBUILD_TESTING=OFF','-DBUILD_CursesDialog=OFF','-DCMake_ENABLE_DEBUGGER=OFF',
             '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded','-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=',
-            '-DCMAKE_EXE_LINKER_FLAGS_RELEASE=/INCREMENTAL:NO /DEBUG:NONE')
+            '-DCMAKE_EXE_LINKER_FLAGS_RELEASE=/INCREMENTAL:NO /DEBUG:NONE') + $compile_options
+        invoke_logged 'bootstrap_configure_cmake' $bootstrap_cmake $cmake_configure
         # Native Ninja resource rules execute cmcldeps before rc.exe. Building
         # only cmake/ctest leaves that command empty and makes RC receive the
         # dependency-wrapper arguments as its own command line (RC1107).
@@ -721,19 +799,16 @@ try
     {
         throw 'discovery.x64_powershell_required: run the provided BAT bootstrap'
     }
-    foreach ($override in @('CL', '_CL_', 'LINK'))
-    {
-        if ([Environment]::GetEnvironmentVariable($override, 'Process'))
-        {
-            throw ('build.external_flags_rejected:' + $override + '; clear it in this console to preserve the reviewed build flags')
-        }
-    }
+    assert_no_external_build_flags
+    $encoding_evidence = assert_owned_source_encoding $source_root
+    write_event 'source.encoding_verified' @{checked_files=$encoding_evidence.checked_files;encoding=$encoding_evidence.encoding;strict_utf8=$encoding_evidence.strict_utf8}
     $installation = find_visual_studio
     $sdk = find_windows_sdk
     # Preserve PATH-selected CMake/Ninja before vcvars changes tool precedence.
     $path_cmake = find_on_path 'cmake.exe'
     $path_ninja = find_on_path 'ninja.exe'
     import_compiler_environment $installation $sdk.version
+    assert_no_external_build_flags
     if ($env:VSCMD_ARG_TGT_ARCH -ne 'x64' -or -not $env:WindowsSDKVersion -or $env:WindowsSDKVersion.TrimEnd('\') -ne $sdk.version)
     {
         throw 'discovery.compiler_environment_mismatch: expected x64 and requested SDK'

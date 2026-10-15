@@ -53,7 +53,7 @@ jobs:
           path: |
             build/tools/
             build/dependencies/
-          key: ${{ runner.os }}-${{ runner.arch }}-${{ steps.image.outputs.version }}-tools-${{ hashFiles('dependencies.lock.json') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ steps.image.outputs.version }}-tools-${{ hashFiles('dependencies.lock.json', 'scripts/build_windows.ps1') }}
           # A runner-image rollover need not rebuild an unchanged compiler/SDK
           # tuple. The bootstrap still verifies its exact identity and four
           # binary hashes before reuse; an incompatible restored entry rebuilds.
@@ -64,7 +64,7 @@ jobs:
         run: >-
           & ./scripts/build_windows.ps1 -mode validate
           -enable_isolated_destructive_tests
-      - name: Assemble and verify the tested Source RC
+      - name: Assemble and verify unpublished development test sources
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -72,28 +72,28 @@ jobs:
           $cmake = ($cache | Where-Object { $_.StartsWith('CMAKE_COMMAND:INTERNAL=') } | Select-Object -First 1).Split('=', 2)[1]
           $ctest = Join-Path (Split-Path -Parent $cmake) 'ctest.exe'
           python scripts/validate.py --output-dir build/final_validation --build-dir build/windows_release --skip-build --ctest $ctest
-          if ($LASTEXITCODE -ne 0) { throw 'source_rc.validation_failed' }
+          if ($LASTEXITCODE -ne 0) { throw 'test_source.validation_failed' }
           $run = Get-ChildItem build_logs -Filter result.json -Recurse | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
           $report = Get-Content -LiteralPath $run.FullName -Raw | ConvertFrom-Json
-          if ($report.status -ne 'passed' -or $report.isolated_destructive_tests -ne 'passed') { throw 'source_rc.native_gate_failed' }
+          if ($report.status -ne 'passed' -or $report.isolated_destructive_tests -ne 'passed') { throw 'test_source.native_gate_failed' }
           $report | Add-Member -NotePropertyName source_commit -NotePropertyValue $env:GITHUB_SHA
           $report | Add-Member -NotePropertyName ci_url -NotePropertyValue "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
           $report | Add-Member -NotePropertyName runner_os -NotePropertyValue ([Runtime.InteropServices.RuntimeInformation]::OSDescription)
           $report | Add-Member -NotePropertyName runner_image -NotePropertyValue $env:ImageVersion
           $evidence = Join-Path $env:RUNNER_TEMP 'source_evidence'
-          $output = Join-Path $env:RUNNER_TEMP 'source_rc'
+          $output = Join-Path $env:RUNNER_TEMP 'test_source'
           New-Item -ItemType Directory -Force $evidence, $output | Out-Null
           $native = Join-Path $evidence 'native_windows_result.json'
           [IO.File]::WriteAllText($native, ($report | ConvertTo-Json -Depth 12), [Text.UTF8Encoding]::new($false))
-          $archive = Join-Path $output "windows_agent_cleanup_source_2.0.0_rc1_$($env:GITHUB_SHA.Substring(0, 12)).zip"
+          $archive = Join-Path $output "windows_agent_cleanup_test_source_2.0.0_dev1_$($env:GITHUB_SHA.Substring(0, 12)).zip"
           python scripts/package.py --output $archive --validation build/final_validation/validation_report.json --offline-dependencies --evidence $native --evidence (Join-Path $run.DirectoryName 'safe_tests.xml') --evidence (Join-Path $run.DirectoryName 'isolated_destructive_tests.xml')
-          if ($LASTEXITCODE -ne 0) { throw 'source_rc.package_failed' }
+          if ($LASTEXITCODE -ne 0) { throw 'test_source.package_failed' }
           python scripts/verify_package.py $archive --expected-commit $env:GITHUB_SHA
-          if ($LASTEXITCODE -ne 0) { throw 'source_rc.archive_verification_failed' }
+          if ($LASTEXITCODE -ne 0) { throw 'test_source.archive_verification_failed' }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: source_rc_${{ github.sha }}
-          path: ${{ runner.temp }}/source_rc/
+          name: test_source_${{ github.sha }}
+          path: ${{ runner.temp }}/test_source/
           retention-days: 30
           if-no-files-found: error
       - name: Check completed tool bootstrap

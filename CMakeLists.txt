@@ -4,6 +4,7 @@
 set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
 set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "")
+set(CMAKE_TRY_COMPILE_CONFIGURATION "Release")
 option(SECURE_ERASE_PORTABLE_TEST_ONLY "Build the actual named modules and portable tests only" OFF)
 option(secure_erase_enable_destructive_tests "Register isolated Windows destructive tests" OFF)
 set(CMAKE_CONFIGURATION_TYPES "Release" CACHE STRING "Release only" FORCE)
@@ -14,6 +15,31 @@ elseif(NOT CMAKE_BUILD_TYPE STREQUAL "Release")
 endif()
 if(NOT CMAKE_GENERATOR MATCHES "^(Ninja|Ninja Multi-Config)$")
     message(FATAL_ERROR "secure_erase.generator_rejected: native import std requires Ninja")
+endif()
+# Native CMake compiler detection precedes target options. Initialize UTF-8 here
+# so compiler checks and the vendor std provider share the product policy.
+# Resource scripts use their own code_page pragma; never pass /utf-8 to rc.exe.
+function(secure_erase_reject_charset_flags)
+    foreach(flag_variable IN ITEMS CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_INIT
+        CMAKE_CXX_FLAGS_RELEASE CMAKE_CXX_FLAGS_RELEASE_INIT)
+        string(TOLOWER "${${flag_variable}}" reviewed_flags)
+        if(reviewed_flags MATCHES "(^|[ \t])[-/](source-charset|execution-charset)(:|[ =])" OR
+           reviewed_flags MATCHES "(^|[ \t])[-/](utf-8-|validate-charset-)([ \t]|$)")
+            message(FATAL_ERROR "secure_erase.charset_flags_rejected: ${flag_variable}; UTF-8 is mandatory")
+        endif()
+    endforeach()
+endfunction()
+if(CMAKE_HOST_WIN32)
+    foreach(environment_variable IN ITEMS CL _CL_ LINK CFLAGS CXXFLAGS RCFLAGS)
+        if(DEFINED ENV{${environment_variable}} AND NOT "$ENV{${environment_variable}}" STREQUAL "")
+            message(FATAL_ERROR "secure_erase.external_flags_rejected: ${environment_variable}; clear it before configuring")
+        endif()
+    endforeach()
+    secure_erase_reject_charset_flags()
+    string(APPEND CMAKE_CXX_FLAGS_INIT " /utf-8")
+    if(DEFINED CMAKE_CXX_FLAGS)
+        string(APPEND CMAKE_CXX_FLAGS " /utf-8")
+    endif()
 endif()
 project(windows_agent_cleanup VERSION 2.0.0 LANGUAGES CXX)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -46,6 +72,10 @@ if(MSVC)
             message(FATAL_ERROR "secure_erase.debug_flags_rejected: ${flag_variable}")
         endif()
     endforeach()
+    secure_erase_reject_charset_flags()
+    # Existing caches do not reinitialize *_FLAGS from *_FLAGS_INIT. Apply the
+    # global policy on every configure; try_compile and vendor std BMIs inherit it.
+    string(APPEND CMAKE_CXX_FLAGS " /utf-8")
     set(CMAKE_CXX_FLAGS_RELEASE "/O2 /DNDEBUG" CACHE STRING "Reviewed release flags" FORCE)
 elseif(SECURE_ERASE_PORTABLE_TEST_ONLY AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang"
        AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 21
@@ -57,9 +87,10 @@ endif()
 if(NOT CMAKE_CXX_STDLIB_MODULES_JSON OR NOT EXISTS "${CMAKE_CXX_STDLIB_MODULES_JSON}")
     message(FATAL_ERROR "secure_erase.std_module_unavailable: ${CMAKE_CXX_COMPILER_IMPORT_STD_ERROR_MESSAGE}")
 endif()
+string(ASCII 239 187 191 secure_erase_utf8_bom)
 try_compile(secure_erase_import_std_works
     SOURCE_FROM_CONTENT import_std_probe.cpp
-        "import std;\nint main() { std::expected<std::vector<int>, int> value{std::vector<int>{1}}; return value->front() - 1; }\n"
+        "${secure_erase_utf8_bom}import std;\nstatic_assert(sizeof(\"é中\") == 6);\nstatic_assert(static_cast<unsigned char>(\"é中\"[0]) == 0xc3 && static_cast<unsigned char>(\"é中\"[1]) == 0xa9 && static_cast<unsigned char>(\"é中\"[2]) == 0xe4 && static_cast<unsigned char>(\"é中\"[3]) == 0xb8 && static_cast<unsigned char>(\"é中\"[4]) == 0xad);\nstatic_assert(L\"é中\"[0] == 0x00e9 && L\"é中\"[1] == 0x4e2d);\nint main() { std::expected<std::vector<int>, int> value{std::vector<int>{1}}; return value->front() - 1; }\n"
     CXX_STANDARD ${secure_erase_cxx_standard} CXX_STANDARD_REQUIRED ON
     OUTPUT_VARIABLE secure_erase_import_std_diagnostics)
 if(NOT secure_erase_import_std_works)
@@ -107,6 +138,7 @@ add_library(secure_erase_engine STATIC src/core/crypto.cpp src/core/plan.cpp src
 target_sources(secure_erase_engine PUBLIC FILE_SET public_modules TYPE CXX_MODULES FILES
     src/modules/model.ixx src/modules/configuration.ixx src/modules/platform.ixx
     src/modules/crypto.ixx src/modules/plan.ixx src/modules/engine.ixx src/modules/codec.ixx src/modules/quick_delete.ixx
+    src/modules/quick_feedback.ixx
     src/modules/cli_arguments.ixx src/modules/agent_protocol.ixx src/modules/metadata.ixx
     src/modules/quick_store.ixx)
 target_sources(secure_erase_engine PRIVATE FILE_SET implementation_partitions TYPE CXX_MODULES FILES
@@ -199,6 +231,9 @@ if(NOT SECURE_ERASE_PORTABLE_TEST_ONLY)
     add_test(NAME build_script_helpers COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass
         -File ${CMAKE_SOURCE_DIR}/tests/build_script_tests.ps1)
     set_tests_properties(build_script_helpers PROPERTIES LABELS "safe;windows" TIMEOUT 30)
+    add_test(NAME skill_install_helpers COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass
+        -File ${CMAKE_SOURCE_DIR}/tests/skill_install_tests.ps1)
+    set_tests_properties(skill_install_helpers PROPERTIES LABELS "safe;windows" TIMEOUT 90)
     add_test(NAME cli_help COMMAND secure_erase_cli --help)
     set_tests_properties(cli_help PROPERTIES LABELS "safe;windows" TIMEOUT 30)
     if(secure_erase_enable_destructive_tests)

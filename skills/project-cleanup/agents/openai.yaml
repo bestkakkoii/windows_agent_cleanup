@@ -1,0 +1,4 @@
+interface:
+  display_name: "Project Cleanup"
+  short_description: "Clean proven disposable Windows project residues"
+  default_prompt: "Use $project-cleanup to choose a cleanup plan and safely process disposable Windows project residues."

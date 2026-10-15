@@ -1,6 +1,6 @@
 ﻿# Contributing
 
-Read [AGENTS.md](AGENTS.md), the development route in [README_AI.md](README_AI.md#extend-or-build-this-project), and the requirements relevant to the change. A development request does not authorize cleaning the repository or the contributor's working files.
+Read [AGENTS.md](AGENTS.md), the development route in [README_AI.md](README_AI.md#engineering-tasks), and the requirements relevant to the change. A development request does not authorize cleaning the repository or the contributor's working files.
 
 ## Changes
 
@@ -22,19 +22,24 @@ Include the revision, Windows build, storage/filesystem shape, exact command, st
 
 Only maintained source, configuration, small fixtures, scripts, docs, assets and dependency locks belong in Git. Keep build outputs, downloaded dependencies, archives, private plans and per-run evidence outside the tracked source tree.
 
-## Source RC publication
+## Test artifacts and publication
 
-CI builds the pinned tools and native modules, runs safe and isolated fixtures,
-then packages a clean Source RC with its exact commit, per-file hashes and native
-evidence. `scripts/verify_package.py` checks the archive without extracting or
-executing it. Optional expected commit/SHA256 values must come from a trusted
-release or repository revision. Python 3.11+ is needed for these packaging tools,
-not for the native application or Windows build bootstrap.
+CI builds pinned tools and native modules, runs safe and isolated fixtures, and
+packages unpublished development test sources bound to the exact commit and
+per-file hashes. `scripts/verify_package.py` checks archive integrity and evidence
+binding without extracting or executing it. Python 3.11+ is needed for packaging,
+not the native application or Windows build bootstrap.
 
-A maintainer-authorized main-branch commit containing `[publish rc]` requests a
-Source RC after that exact commit's complete CI succeeds. The publication workflow
-accepts only successful same-repository push runs and never publishes from fork
-pull requests. It creates a prerelease tagged `source-rc-<commit prefix>` and does
-not overwrite an existing release. The Windows consumer-build, GUI runtime and
-storage hardware matrix still require separate acceptance; CI does not promote RC
-to final Release.
+Follow [publication policy](docs/publication.md). Neither a passing CI run, a tag,
+nor a commit message authorizes RC or Release publication. Both require the
+owner’s returned Windows build/test evidence and a review tied to that exact
+revision. No workflow currently creates public releases. The historical
+premature prerelease is withdrawn to a draft while its tag and assets are kept.
+
+## Agent integration
+
+Keep persistent engineering rules in `AGENTS.md` / `CLAUDE.md`, universal task
+routing in `README_AI.md`, operational instructions in the shared Skill, and
+conditional details in its bundled references. Follow the official Skill Creator
+workflow, validate the complete bundle and forward-test realistic requests after
+substantial changes. See [Skill design](docs/skill_design.md).
