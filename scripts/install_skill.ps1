@@ -14,6 +14,7 @@ param
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 $Client = $Client.ToLowerInvariant()
 $utf8 = New-Object System.Text.UTF8Encoding($false, $true)
 $utf8_bom = New-Object System.Text.UTF8Encoding($true, $true)

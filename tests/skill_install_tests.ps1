@@ -18,12 +18,12 @@ function quote_literal
 function invoke_installer
 {
     param([string]$destination, [string]$client = 'codex')
-    $command = '& ' + (quote_literal $installer) + ' -Client ' + (quote_literal $client) +
+    $command = "`$ProgressPreference = 'SilentlyContinue'; & " + (quote_literal $installer) + ' -Client ' + (quote_literal $client) +
         ' -ToolRoot ' + (quote_literal $tool_root) + ' -Destination ' + (quote_literal $destination)
     $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
     $start = New-Object Diagnostics.ProcessStartInfo
     $start.FileName = $child_host
-    $start.Arguments = '-NoLogo -NoProfile -NonInteractive -EncodedCommand ' + $encoded
+    $start.Arguments = '-NoLogo -NoProfile -NonInteractive -OutputFormat Text -EncodedCommand ' + $encoded
     $start.UseShellExecute = $false
     $start.RedirectStandardOutput = $true
     $start.RedirectStandardError = $true
@@ -43,20 +43,43 @@ function invoke_installer
         }
         $output = $output_task.GetAwaiter().GetResult()
         $error_output = $error_task.GetAwaiter().GetResult()
-        # EncodedCommand serializes stderr as CLIXML on Windows PowerShell.
-        # Decode only the standard envelope; otherwise use the plain JSON line.
-        if ($error_output.StartsWith('#< CLIXML'))
-        {
-            $xml_text = $error_output.Substring($error_output.IndexOf('<Objs'))
-            $messages = [Management.Automation.PSSerializer]::Deserialize($xml_text)
-            $error_output = (@($messages | ForEach-Object { [string]$_ }) -join "`n").Trim()
-        }
         $text = $output.Trim()
         if ($process.ExitCode -ne 0)
         {
             $text = $error_output.Trim()
         }
-        return [pscustomobject]@{ exit_code = $process.ExitCode; text = $text; result = ($text | ConvertFrom-Json) }
+        try
+        {
+            if (($process.ExitCode -eq 0 -and -not [string]::IsNullOrWhiteSpace($error_output)) -or
+                ($process.ExitCode -ne 0 -and -not [string]::IsNullOrWhiteSpace($output)))
+            {
+                throw 'skill_tests.child_unexpected_stream_output'
+            }
+            $result = ConvertFrom-Json -InputObject $text -ErrorAction Stop
+            if ($result -isnot [PSCustomObject] -or
+                $null -eq $result.PSObject.Properties['schema'] -or
+                $null -eq $result.PSObject.Properties['status'] -or
+                $result.schema -cne 'windows_agent_cleanup.skill_install.v2' -or
+                $result.status -cnotin @('installed', 'updated', 'failed'))
+            {
+                throw 'skill_tests.child_envelope_invalid'
+            }
+        }
+        catch
+        {
+            # Keep exact bounded transport evidence. Never recover by selecting
+            # a convenient JSON line or dropping unknown CLIXML/progress output.
+            $diagnostic = [ordered]@{
+                exit_code = $process.ExitCode
+                stdout = $output.Substring(0, [Math]::Min(4096, $output.Length))
+                stderr = $error_output.Substring(0, [Math]::Min(4096, $error_output.Length))
+                stdout_length = $output.Length
+                stderr_length = $error_output.Length
+                parse_error = $_.Exception.Message
+            }
+            throw ('skill_tests.child_protocol_invalid:' + ($diagnostic | ConvertTo-Json -Compress))
+        }
+        return [pscustomobject]@{ exit_code = $process.ExitCode; text = $text; result = $result }
     }
     finally
     {
@@ -214,6 +237,45 @@ try
     $run = invoke_installer $claude_destination 'claude'
     require ($run.exit_code -eq 0 -and $run.result.client -ceq 'claude' -and $run.result.files -eq 7) 'claude_bundle_failed'
     require ([IO.File]::Exists((Join-Path $claude_destination 'agents/openai.yaml'))) 'portable_metadata_not_copied'
+    # Preserve unexpected transport bytes rather than accepting a convenient
+    # JSON line after non-protocol progress/error text.
+    $real_installer = $installer
+    $installer = Join-Path $directory 'non_protocol_child.ps1'
+    $child_fixture = @'
+param([string]$Client, [string]$ToolRoot, [string]$Destination)
+[Console]::Error.WriteLine('unexpected transport prefix')
+[Console]::Error.WriteLine('{"schema":"windows_agent_cleanup.skill_install.v2","status":"failed"}')
+exit 1
+'@
+    [IO.File]::WriteAllText($installer, $child_fixture, (New-Object Text.UTF8Encoding($true)))
+    $protocol_diagnostic = $null
+    try
+    {
+        try
+        {
+            $null = invoke_installer (Join-Path $directory 'protocol_fixture/project-cleanup')
+        }
+        catch
+        {
+            $prefix = 'skill_tests.child_protocol_invalid:'
+            if ($_.Exception.Message.StartsWith($prefix, [StringComparison]::Ordinal))
+            {
+                $protocol_diagnostic = ConvertFrom-Json -InputObject $_.Exception.Message.Substring($prefix.Length)
+            }
+            else
+            {
+                throw
+            }
+        }
+    }
+    finally
+    {
+        $installer = $real_installer
+    }
+    require ($null -ne $protocol_diagnostic -and $protocol_diagnostic.exit_code -eq 1 -and
+        $protocol_diagnostic.stderr.Contains('unexpected transport prefix') -and
+        $protocol_diagnostic.stderr.Contains('"schema":"windows_agent_cleanup.skill_install.v2"') -and
+        $protocol_diagnostic.stdout_length -eq 0) 'non_protocol_output_was_discarded'
     $leftovers = @(Get-ChildItem -LiteralPath $directory -Recurse -Force | Where-Object {
         $_.Name.StartsWith('.project-cleanup.stage.') -or $_.Name.StartsWith('.project-cleanup.previous.') })
     require ($leftovers.Count -eq 0) 'owned_staging_left_after_normal_paths'
