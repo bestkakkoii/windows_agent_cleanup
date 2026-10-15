@@ -1140,11 +1140,11 @@ int main()
             return state;
         };
         feedback::state state;
-        const auto first = window(state);
-        const bool first_stable = first == feedback::adjustment::unchanged &&
+        const auto first_window = window(state);
+        const bool first_stable = first_window == feedback::adjustment::unchanged &&
             state.limit == 1 && state.stable_windows == 1 && !state.probing;
-        const auto second = window(state);
-        results.check(first_stable && second == feedback::adjustment::increase &&
+        const auto second_window = window(state);
+        results.check(first_stable && second_window == feedback::adjustment::increase &&
             state.limit == 2 && state.probing && state.baseline_rate == 250.0 &&
             state.baseline_latency == 4'000'000.0,
             "stable_success_windows_probe_above_initial_device_hint");
