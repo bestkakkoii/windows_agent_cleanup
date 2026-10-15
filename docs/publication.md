@@ -28,7 +28,12 @@ No independently authenticated source-to-owner-binary commit binding was supplie
 A matching artifact hash identifies the received bytes; it is not a reproducible
 build attestation. Keep the source reference and binary provenance distinct.
 
-CLI Agent acceptance and the full Windows/storage hardware matrix remain pending.
+Subsequent owner-supplied QA reports record one successful Agent-driven CLI Quick
+pilot on Windows build 26200: 2,890 selected regular files, 102,250,476 logical
+bytes and no failed, pending or remaining selected names. The reported archive
+hash matches the published asset; this is scoped owner-reported runtime evidence,
+not independent reproduction or full CLI acceptance. Broader CLI acceptance and
+the full Windows/storage hardware matrix remain pending.
 Hosted native CI establishes only its recorded fixture coverage. A passing suite
 can contain explicit `not_run` scenarios, including overwrite when the runner
 cannot identify storage media. See the [Windows acceptance plan](windows_test_plan.md).

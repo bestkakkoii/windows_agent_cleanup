@@ -12,7 +12,7 @@ read <工具實際所在目錄>/README_AI.md
 
 快速模式採邏輯刪除；安全抹除須另外明確選用。工具不保證立即回收全部容量、SSD 實體不可復原，或在未量測的硬體上達到最大速度。
 
-**[下載 Windows x64 正式發行 v2.0.0](https://github.com/bestkakkoii/windows_agent_cleanup/releases/tag/v2.0.0)**，使用前核對附帶的 SHA-256 檔案。此版本已標示為 Latest，使用擁有者提供的 GUI／CLI 原檔；程式仍回報 `2.0.0-dev.1`，GUI 保留原有開發建置標籤。CLI Agent 驗收與完整硬體矩陣仍待補齊，詳見[發布政策](docs/publication.md)。Release ZIP 包含執行程式、使用文件、協定 schema、授權聲明與完整 Agent Skill；原始碼、建置與測試檔案留在倉庫。CI 測試證據僅代表其記錄的範圍，不會自動授權後續發行。
+**[下載 Windows x64 正式發行 v2.0.0](https://github.com/bestkakkoii/windows_agent_cleanup/releases/tag/v2.0.0)**，使用前核對附帶的 SHA-256 檔案。此版本已標示為 Latest，使用擁有者提供的 GUI／CLI 原檔；程式仍回報 `2.0.0-dev.1`，GUI 保留原有開發建置標籤。擁有者回報 CLI 快速模式已成功清理一批 2,890 個檔案；其他 CLI 驗收與完整硬體矩陣仍待補齊，詳見[發布政策](docs/publication.md)。Release ZIP 包含執行程式、使用文件、協定 schema、授權聲明與完整 Agent Skill；原始碼、建置與測試檔案留在倉庫。CI 測試證據僅代表其記錄的範圍，不會自動授權後續發行。
 
 GUI 使用：啟動 `bin/secure_erase_gui.exe`，選擇 **Quick delete** 或 **Overwrite and verify**，加入／拖放檔案與目錄後按 **Start**。在 **Confirm batch** 檢查並確認；「Frozen targets」代表已固定的目標集合，是正常確認流程。完成的輸入會移出清單，未完成者保留供檢查。失敗時複製診斷 JSON；降級與強制結束程序需要各自的獨立授權。
 

@@ -101,17 +101,52 @@ commit `2b552ba92c9e81cb1ef4b8101619993677b5548a`, under the owner's explicit
 `windows_agent_cleanup_v2.0.0_windows_x64.zip` contains the exact owner-supplied
 executables and user-facing material, without build/source/test trees. The
 application reports `2.0.0-dev.1`; the distribution tag does not change its bytes.
-The owner reported GUI quick deletion and verified overwrite smoke success;
-CLI Agent acceptance and the full hardware matrix remain pending. The supplied
+The owner reported GUI quick deletion and verified overwrite smoke success, and
+the scoped CLI Quick pilot below. Broader CLI Agent acceptance and the full
+hardware matrix remain pending. The supplied
 binaries have no independently authenticated binding to a source commit.
 
-[CI run 38778771188](https://github.com/bestkakkoii/windows_agent_cleanup/actions/runs/38778771188)
-passed at that source commit on hosted Windows Server 2025 with MSVC
+[CI run 38785317728](https://github.com/bestkakkoii/windows_agent_cleanup/actions/runs/38785317728)
+passed at documentation revision `64e8fffe3f7716211cc7a1d7c1fd55bf16f84e2f`
+on hosted Windows Server 2025 with MSVC
 19.51.36260.0 and SDK 10.0.26100.0: 11 safe and 4 isolated suites, plus source
 packaging and archive verification. That is native engineering evidence for the
 runner, not a Windows 11 device-matrix pass or proof that the owner binaries came
 from CI. The three Agent CLI omissions and unknown-media overwrite omissions
 above remain untested even though the suites passed.
+
+### Owner-reported CLI Quick pilot
+
+The owner supplied matching Markdown/JSON QA reports generated on
+2026-10-15 UTC for the published v2.0.0 binaries, using Windows x64 build
+`10.0.26200.0` and PowerShell `5.1.26100.9444`. The archive SHA-256 matches
+the published asset in [project metadata](../spec/project.json); the report's
+CLI SHA-256 is `4d105dc22de7b9d9a91769639086347bee2440f1881df6032f915f7673f4057c`.
+Both submitted reports were reviewed. Referenced raw per-file records, receipts
+and invocation files were not supplied for independent inspection. Private
+project paths, request identifiers and raw reports are excluded from Git.
+
+| Reported observation | Result |
+|---|---|
+| Authorized real batch | 2,890 generated regular files; 102,250,476 logical bytes; no directories selected |
+| Native result and independent caller reconciliation | Exit 0; completed 2,890; failed/pending/skipped 0; zero selected names remaining; protected product hashes unchanged |
+| Native invocation wall time | 9,790.7014 ms including preparation, freezing, deletion and reporting; execution-only timing unavailable |
+| Disposable fixtures | Two files / 27 logical bytes and three directories removed; Unicode/nested/empty paths covered; unselected sentinel survived |
+| Expected refusals | Unelevated exit 2, out-of-scope exit 2 and junction-ancestor exit 3 (`reparse_ancestor_denied`); protected sentinels survived |
+
+File/directory splits and logical bytes come from the caller's inventory and
+reconciliation; native result.v1 confirms combined target counts, not those
+additional metrics. The reported positive volume-free-space delta is not
+attributable to this job. The caller's initial PowerShell 5.1 nested-array
+failure occurred before a real native invocation and was a QA harness issue.
+No native defect was verified in these tested cases.
+
+This pilot does not cover GUI, overwrite, hard links or allocation release,
+active-lock recovery, cancellation/resource exhaustion, deterministic frozen
+addition/replacement races, the complete filesystem/device matrix, or
+reproducible source-to-binary binding. Its onboarding byte count describes the
+immutable tagged instructions, not the later documentation on `main`. It does
+not establish maximum throughput, immediate reclamation or physical sanitization.
 
 Keep the binary release separate from CI's unpublished development test Source
 ZIP. `scripts/package.py` and `scripts/verify_package.py` create/verify that source

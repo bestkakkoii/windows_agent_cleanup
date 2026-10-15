@@ -72,9 +72,28 @@ GUI diagnostic copies include counts, errors, masked event evidence and availabl
 
 The published Latest Release `v2.0.0` is the owner-authorized first-distribution exception described in [publication policy](publication.md). Its supplied GUI/CLI EXE bytes are unchanged and still report `2.0.0-dev.1` and the original development label. The release source reference is `2b552ba92c9e81cb1ef4b8101619993677b5548a`; runtime C++ sources remain unchanged from `479c3aa44cc918ec09a4c50a8a799ad1c89d9d0d`. No independent source-to-owner-binary attestation is claimed. The published runtime ZIP and generated Source ZIP are distinct deliverables.
 
-Owner GUI quick/overwrite smoke results are available. Native CI run `38778771188` passed 11 safe suites, four isolated suites and source packaging on hosted Windows Server 2025 with MSVC `19.51.36260.0` and SDK `10.0.26100.0`. This does not execute or attest the owner-supplied binaries, prove desktop GUI operation in CI, or cover the full physical-storage matrix. CLI Agent acceptance and full hardware coverage remain pending. Current evidence and gaps are maintained in [the test plan](windows_test_plan.md) and [project metadata](../spec/project.json); individual source/test paths are not pass claims.
+Owner GUI quick/overwrite smoke results and a successful 2,890-file CLI Quick pilot are available. Native CI run `38785317728`, at documentation revision `64e8fffe3f7716211cc7a1d7c1fd55bf16f84e2f`, passed 11 safe suites, four isolated suites and source packaging on hosted Windows Server 2025 with MSVC `19.51.36260.0` and SDK `10.0.26100.0`. CI does not execute or attest the owner-supplied binaries, prove desktop GUI operation, or cover the full physical-storage matrix. Broader CLI Agent acceptance and full hardware coverage remain pending. Current evidence and gaps are maintained in [the test plan](windows_test_plan.md) and [project metadata](../spec/project.json); individual source/test paths are not pass claims.
 
 Normal RC/Release owner-evidence and review gates remain in force for later versions. The first-distribution exception neither marks untested configurations passed nor authorizes another publication. End-to-end measurements, rather than a universal maximum-speed claim, determine performance conclusions.
+
+## Open Agent integration improvements
+
+The owner-reported pilot identifies observability and onboarding opportunities,
+without establishing a native defect. These are proposals, not current features:
+
+- Prioritize selected/successful file and directory counts, logical-byte totals,
+  phase durations with explicit units, and effective-token discovery before batch
+  preparation. Separate logical size from allocation observations.
+- Choose an explicit result-schema evolution contract before adding stdout
+  metrics or bounded failure-code aggregates: result.v1 rejects additional
+  properties. Preserve its strict consumers rather than silently extending v1.
+- Evaluate a concise authorized-Quick procedure and a maintained PowerShell
+  5.1/7 example with consistent enumeration, BOM-free manifests, immutable
+  intent/receipts and no automatic mutation replay. Measure current onboarding
+  before claiming context savings; the report measured older release docs.
+- Obtain exact-binary frozen-membership race evidence and source/build-to-binary
+  provenance for future releases. Instrument startup, preparation, execution,
+  recovery and report commit before changing performance heuristics.
 
 ## Source encoding
 

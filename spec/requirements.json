@@ -576,7 +576,7 @@
         "docs/windows_test_plan.md"
       ],
       "test_evidence_kind": "source_locations_not_pass_claims",
-      "scope_note": "GUI and CLI share native plan/execution/backend contracts while retaining interface-specific orchestration. CLI is machine-only and does not load a GUI runtime or require MCP. Owner CLI Agent acceptance remains pending."
+      "scope_note": "GUI and CLI share native plan/execution/backend contracts while retaining interface-specific orchestration. CLI is machine-only and does not load a GUI runtime or require MCP. A scoped owner-reported CLI Quick pilot passed; broader CLI Agent acceptance remains pending."
     },
     {
       "id": "R21",
@@ -1536,8 +1536,8 @@
   "current_validation_scope": {
     "reference": "spec/project.json",
     "test_matrix": "docs/windows_test_plan.md",
-    "owner": "GUI quick-deletion and overwrite smoke reported successful; CLI Agent acceptance and full hardware matrix pending.",
-    "native_ci": "Run 38778771188 at source 2b552ba92c9e81cb1ef4b8101619993677b5548a passed 11 safe suites, four isolated suites and source packaging on hosted Windows Server 2025, MSVC 19.51.36260.0, SDK 10.0.26100.0.",
+    "owner": "GUI quick-deletion and overwrite smoke and a scoped 2,890-file CLI Quick pilot reported successful; broader CLI acceptance and full hardware matrix pending.",
+    "native_ci": "Run 38785317728 at documentation revision 64e8fffe3f7716211cc7a1d7c1fd55bf16f84e2f passed 11 safe suites, four isolated suites and source packaging on hosted Windows Server 2025, MSVC 19.51.36260.0, SDK 10.0.26100.0.",
     "limits": "Hosted CI does not execute or attest the owner-supplied Release EXEs, desktop GUI or all Windows/filesystem/device combinations. Individual unexecuted cases remain pending even when their containing suite passes.",
     "publication": "Latest Release v2.0.0 is published under the explicit first-distribution owner exception. Owner EXE bytes still report 2.0.0-dev.1 and have no independently attested source-to-binary commit binding. Normal gates continue for later versions."
   },

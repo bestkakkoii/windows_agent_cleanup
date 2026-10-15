@@ -58,7 +58,8 @@ Follow [CONTRIBUTING.md](CONTRIBUTING.md) for prerequisites, diagnostics and
 source-package verification; building is separate from cleanup and publishing.
 
 Published distribution v2.0.0 preserves the owner EXEs, which still report
-`2.0.0-dev.1`. CLI Agent acceptance and the full hardware matrix remain pending.
+`2.0.0-dev.1`. A scoped owner-reported CLI Quick pilot passed; broader CLI
+acceptance and the full hardware matrix remain pending.
 The [publication record](spec/project.json) separates distribution identity,
 source reference and binary provenance. Documentation on `main` may be newer
 than the tagged bundle; a source documentation update does not replace it.
