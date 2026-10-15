@@ -83,7 +83,18 @@ with tempfile.TemporaryDirectory(prefix='cleanup_package_fixture_') as temp:
     root = Path(temp) / 'source'
     (root / 'scripts').mkdir(parents=True)
     shutil.copyfile(Path(__file__).resolve().parents[1] / 'scripts/package.py', root / 'scripts/package.py')
-    (root / 'dependencies.lock.json').write_text('{"dependencies": []}\n', encoding='utf-8')
+    dependency_bytes = b'fixture dependency source only\n'
+    dependency_directory = 'fixture_vendor/pinned'
+    dependency_member = 'build/dependencies/' + dependency_directory + '/vendor.txt'
+    dependency_file = root / dependency_member
+    dependency_file.parent.mkdir(parents=True)
+    dependency_file.write_bytes(dependency_bytes)
+    (root / '.gitignore').write_text('build/\n', encoding='utf-8')
+    (root / 'dependencies.lock.json').write_text(json.dumps({'dependencies': [{
+        'directory': dependency_directory,
+        'files': [{'path': 'vendor.txt', 'size': len(dependency_bytes),
+                   'sha256': hashlib.sha256(dependency_bytes).hexdigest()}]
+    }]}) + '\n', encoding='utf-8')
     (root / 'source.txt').write_text('fixture source\n', encoding='utf-8')
     def git(*args):
         return subprocess.check_output(['git', *args], cwd=root, stderr=subprocess.DEVNULL)
@@ -110,6 +121,29 @@ with tempfile.TemporaryDirectory(prefix='cleanup_package_fixture_') as temp:
             if 'windows_agent_cleanup/evidence/fixture_evidence.json' not in archive.namelist():
                 raise ValueError('missing_supplied_evidence')
     check('actual_packager_clean_tree_and_evidence_roundtrip', produced)
+    offline_command = command + ['--offline-dependencies']
+    def offline_roundtrip():
+        result = subprocess.run(offline_command, cwd=root, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise ValueError(result.stderr)
+        verify(output, fixture_commit)
+        with zipfile.ZipFile(output) as archive:
+            if archive.read('windows_agent_cleanup/' + dependency_member) != dependency_bytes:
+                raise ValueError('offline_dependency_cache_bytes_mismatched')
+    check('actual_packager_offline_dependency_uses_restore_cache_layout', offline_roundtrip)
+    dependency_file.write_bytes(b'tampered fixture dependency\n')
+    def rejects_tampered_dependency():
+        result = subprocess.run(offline_command, cwd=root, capture_output=True, text=True)
+        if result.returncode == 0 or 'offline_dependency_hash_mismatch' not in result.stderr:
+            raise ValueError('tampered_offline_dependency_accepted')
+    check('actual_packager_rejects_tampered_offline_dependency', rejects_tampered_dependency)
+    dependency_file.unlink()
+    def rejects_missing_dependency():
+        result = subprocess.run(offline_command, cwd=root, capture_output=True, text=True)
+        if result.returncode == 0 or 'FileNotFoundError' not in result.stderr:
+            raise ValueError('missing_offline_dependency_accepted')
+    check('actual_packager_rejects_missing_offline_dependency', rejects_missing_dependency)
+    dependency_file.write_bytes(dependency_bytes)
     (root / 'source.txt').write_text('changed source\n', encoding='utf-8')
     def rejects_dirty():
         result = subprocess.run(command, cwd=root, capture_output=True, text=True)

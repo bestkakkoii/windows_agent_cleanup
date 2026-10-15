@@ -49,13 +49,14 @@ def main() -> int:
     lock = json.loads(content['dependencies.lock.json'].decode('utf-8-sig'))
     if args.offline_dependencies:
         for dependency in lock['dependencies']:
-            cache = root / dependency['directory']
+            cache_directory = 'build/dependencies/' + dependency['directory']
+            cache = root / cache_directory
             for entry in dependency['files']:
                 path = cache / entry['path']
                 data = path.read_bytes()
                 if hashlib.sha256(data).hexdigest() != entry['sha256']:
                     parser.error('offline_dependency_hash_mismatch:' + str(path))
-                content[dependency['directory'] + '/' + entry['path']] = data
+                content[cache_directory + '/' + entry['path']] = data
     validation['source_commit'] = commit
     content['evidence/validation_report.json'] = (json.dumps(validation, ensure_ascii=False, indent=2) + '\n').encode()
     for path in args.evidence:
