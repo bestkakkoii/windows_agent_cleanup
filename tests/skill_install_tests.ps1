@@ -118,6 +118,24 @@ try
     require (-not ($manifest_bytes.Length -ge 3 -and $manifest_bytes[0] -eq 239 -and $manifest_bytes[1] -eq 187 -and $manifest_bytes[2] -eq 191)) 'streaming_writer_added_bom'
     $manifest_rows = @([IO.File]::ReadAllLines($manifest, $utf8) | ForEach-Object { $_ | ConvertFrom-Json })
     require ($manifest_rows.Count -eq 2 -and $manifest_rows[0].path -ceq $approved_path_stream[0] -and $manifest_rows[1].path -ceq $approved_path_stream[1]) 'streaming_writer_changed_paths'
+    # Reject a BOM in source SKILL frontmatter rather than stripping it only
+    # during validation and copying malformed original bytes to the host.
+    $source_skill = Join-Path $tool_root 'skills/project-cleanup/SKILL.md'
+    $skill_bytes = [IO.File]::ReadAllBytes($source_skill)
+    $bom_destination = Join-Path $directory 'bom_source/project-cleanup'
+    try
+    {
+        [IO.File]::WriteAllBytes($source_skill, [byte[]](@(239, 187, 191) + $skill_bytes))
+        $bom_source_hash = file_hash $source_skill
+        $run = invoke_installer $bom_destination
+        require ($run.exit_code -eq 1 -and $run.result.error_code -ceq 'skill_install.source_contract_invalid' -and
+            -not [IO.Directory]::Exists($bom_destination) -and
+            (file_hash $source_skill) -ceq $bom_source_hash) 'bom_skill_source_accepted_or_changed'
+    }
+    finally
+    {
+        [IO.File]::WriteAllBytes($source_skill, $skill_bytes)
+    }
     $destination = Join-Path $directory 'codex/project-cleanup'
     $run = invoke_installer $destination
     require ($run.exit_code -eq 0 -and $run.result.status -ceq 'installed' -and $run.result.files -eq 7) 'complete_install_failed'

@@ -67,7 +67,10 @@ def check_sources(root: Path) -> tuple[list[dict], list[dict]]:
                 error('bat_requires_ascii_crlf')
         elif path.suffix in bom_suffixes or path.name in {'CMakeLists.txt', 'NOTICE'}:
             # Skill frontmatter parsers require the first line exactly ---.
-            if path.name != 'SKILL.md' and not data.startswith(b'\xef\xbb\xbf'):
+            if path.name == 'SKILL.md':
+                if data.startswith(b'\xef\xbb\xbf'):
+                    error('skill_frontmatter_requires_utf8_without_bom')
+            elif not data.startswith(b'\xef\xbb\xbf'):
                 error('authored_text_requires_utf8_bom')
             try:
                 data.decode('utf-8-sig')

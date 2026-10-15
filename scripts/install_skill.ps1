@@ -217,8 +217,10 @@ try
         $bytes = [System.IO.File]::ReadAllBytes($file.full_path)
         if ($file.path -ceq 'SKILL.md')
         {
+            # Decode exact bytes and compare ordinally: culture comparisons may
+            # ignore U+FEFF and accept frontmatter-breaking original bytes.
             $text = $utf8.GetString($bytes).Replace("`r`n", "`n")
-            if (-not $text.StartsWith("---`n") -or $text -cnotmatch '(?m)^name: project-cleanup$')
+            if (-not $text.StartsWith("---`n", [System.StringComparison]::Ordinal) -or $text -cnotmatch '(?m)^name: project-cleanup$')
             {
                 throw 'skill_install.source_contract_invalid'
             }
