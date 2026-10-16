@@ -37,8 +37,8 @@ do not invent those from combined counters or process wall time.
 ## Opt-in v2 details
 
 Only a bound executable advertising support accepts v2; see conditional
-[version negotiation](bulk_cli.md#version-negotiation). Published v2.0.0 remains
-v1. A v2 operation uses `windows_agent_cleanup.result.v2`; its schema is
+[version negotiation](bulk_cli.md#version-negotiation). Unadvertised/v1-only
+executables retain the v1 route. A v2 operation uses `windows_agent_cleanup.result.v2`; its schema is
 `schemas/result.v2.schema.json`. Default v1 shape and exits remain unchanged.
 V2 adds typed readiness, `next_action`/`retry_safe` and these measurements:
 
@@ -86,8 +86,9 @@ reject reparse paths and keep ACLs unchanged. A single matching file is only
 candidate evidence: validate its intent/result binding and terminal row.
 Do not open the native state store through a mutating/creating API just to
 inspect history; an active writer's refusal is unavailable/unknown, not a
-reason to release its lock. The published v2.0.0 executable has no native
-`status`/request-lookup command.
+reason to release its lock. Use native `status` only when the exact executable
+advertises request lookup; otherwise use this bounded manual inspection route.
+Never infer command support from a distribution label or newer source docs.
 
 A crash can lose phase/byte observations; surviving names cannot reconstruct
 unrecorded metrics. Quick scratch vanishes when handles close; reports cannot

@@ -1,12 +1,14 @@
 ﻿# Publication policy
 
-Current distribution: [v2.0.0](https://github.com/bestkakkoii/windows_agent_cleanup/releases/tag/v2.0.0),
-published as the repository's Latest Release on 2026-10-16 (Asia/Taipei).
-The canonical artifact name, hashes, source references and publication receipt
-are in [spec/project.json](../spec/project.json). The application and CI
-source-artifact version remain `2.0.0-dev.1`; the unchanged GUI also retains its
-original development-build footer. These labels describe the supplied build,
-not the publication state of the distribution.
+Use the [Latest Release](https://github.com/bestkakkoii/windows_agent_cleanup/releases/latest)
+for the current public distribution. Exact artifact names, versions, hashes,
+source references and publication receipts are recorded in
+[spec/project.json](../spec/project.json). Distribution/application versions can
+differ; inspect the selected runtime manifest and executable identity.
+
+Versioned sections below are dated authorization/provenance history, not dynamic
+installation instructions. Prepared/authorized entries are not published until
+a GitHub receipt confirms that state. Follow the live Release record for downloads.
 
 ## Owner-directed first public distribution
 
@@ -97,8 +99,8 @@ another revision are not evidence for those changes.
 CI success is engineering evidence, not owner acceptance or publication authority.
 Current workflows produce unpublished development test artifacts and do not
 create Releases. Their `publication_allowed=false` and development status fields
-apply to those CI artifacts, not to the separately authorized public v2.0.0
-binary distribution. Commit-message markers have no publication authority.
+apply to those CI artifacts, not to separately owner-authorized public binary
+distributions. Commit-message markers have no publication authority.
 
 Tags identify source revisions. A published Release adds notes and assets; full
 Latest Releases are separate from drafts and prereleases. Confirm both the
@@ -107,7 +109,7 @@ published state and the repository's Releases sidebar after an authorized releas
 References: [GitHub release API](https://docs.github.com/en/rest/releases/releases),
 [Windows acceptance plan](windows_test_plan.md), [project contract](../spec/project.json).
 
-## Future portable runtime assembly
+## Portable runtime assembly
 
 Ordinary operator setup downloads an authorized Release's Windows x64 runtime
 asset and checks its release-record SHA-256 before extraction. It does not clone
@@ -117,8 +119,8 @@ Keep a developer checkout separate from a portable program installation.
 Engineering-only `scripts/package_runtime.py` owns future runtime archives;
 `scripts/package.py` and `scripts/verify_package.py` retain their distinct,
 unpublished source/evidence contract. Neither packager publishes or upgrades an
-existing Release. The old v2.0.0 owner binaries and historical provenance are
-unchanged; future-only PE/capability checks do not retroactively attest them.
+existing Release. Historical binary bytes and provenance remain unchanged;
+newer PE/capability checks do not retroactively attest older inputs.
 
 From a clean committed checkout with the locked ImGui license restored, supply
 explicit approved executable paths and a BOM-free provenance JSON file outside
@@ -127,7 +129,7 @@ Git. Its minimal shape is:
 ```json
 {
   "schema": "windows_agent_cleanup.runtime_inputs.v1",
-  "distribution_version": "2.0.0-dev.1",
+  "distribution_version": "<selected distribution version>",
   "approved_binary_sha256": {
     "bin/secure_erase_cli.exe": "<exact CLI SHA-256>",
     "bin/secure_erase_gui.exe": "<exact GUI SHA-256>"
@@ -186,8 +188,9 @@ PE/resource definitions follow Microsoft's
 [VERSIONINFO resource](https://learn.microsoft.com/en-us/windows/win32/menurc/versioninfo-resource)
 contracts, checked on 2026-10-16 (Asia/Taipei). CMake captures source identity at
 configuration: reconfigure after source changes before attributing a build to
-that source state. The PE numeric assembly/file version `2.0.0.1` identifies the
-current application development build; the string remains `2.0.0-dev.1`.
+that source state. Actual numeric/string versions are read from the selected PE resource and
+recorded in the runtime manifest; do not infer them from this policy or a
+Release tag.
 CLI `asInvoker` and GUI administrator behavior remain separate and unchanged.
 
 ## Refreshing an approved Actions runtime

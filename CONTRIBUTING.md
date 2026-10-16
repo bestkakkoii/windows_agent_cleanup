@@ -14,6 +14,9 @@ publication policy, not README snapshots. Use `/releases/latest` for ordinary
 downloads. The [Quick technical report](docs/quick_delete_technical_report.md)
 owns implementation/reproduction detail; update it when the traced algorithm
 changes rather than duplicating that detail in translated READMEs.
+Apply the same release-agnostic rule to Skill references, setup/design guidance
+and issue templates. Protocol versions and technical platform/build prerequisites
+remain explicit; dated provenance/acceptance records retain their exact identities.
 
 Preserve source formats: owned code/build files and regular documentation use strict UTF-8 with BOM; JSON/JSONL/YAML use UTF-8 without BOM; BAT is ASCII CRLF. `SKILL.md` frontmatter starts at byte zero without a BOM. Keep pinned upstream bytes unchanged. Windows build preflight checks owned code/build encoding; `scripts/validate.py` also checks documentation and format exceptions.
 
@@ -92,12 +95,13 @@ publication. Both require owner-returned Windows evidence and review bound to
 the exact revision; full Release normally requires the claimed platform matrix.
 No workflow currently creates public releases.
 
-The owner explicitly authorized the formal Latest `v2.0.0` distribution on
-2026-10-16 (Asia/Taipei) as a scoped exception. Its Windows binary ZIP preserves
-the owner-supplied EXEs unchanged; they still report `2.0.0-dev.1`. Owner GUI
-smoke success does not complete CLI Agent or hardware acceptance, and CI source
-evidence does not authenticate the owner binaries' source revision. Do not
-extend that publication authorization or relabel pending cases as passed.
+Specific owner-authorized distribution amendments, exact artifact identities
+and publication receipts belong in the publication policy and `spec/project.json`.
+Do not infer current versions from contributor instructions. Preserve approved
+EXE bytes and distinguish distribution labels from actual application versions.
+Owner GUI smoke success does not complete CLI Agent or hardware acceptance;
+CI source evidence does not authenticate differently hashed owner binaries.
+Do not extend a scoped authorization or relabel pending cases as passed.
 
 ## Agent integration
 

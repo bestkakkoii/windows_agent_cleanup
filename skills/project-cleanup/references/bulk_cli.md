@@ -55,11 +55,10 @@ precision; keep raw native JSON rather than reserializing converted numbers.
 
 ## Version negotiation
 
-Published v2.0.0 owner binaries implement v1; the distribution version does not
-advertise a protocol version. A future intact runtime `release_manifest.json`
-may advertise `supported_contract_versions` bound to the exact CLI hash. Only
-then select `--contract-version 2` on capabilities and the operation; default
-calls stay v1. For an unpackaged future engineering build, one nonmutating v2
+Distribution/application versions do not advertise protocol support. Use an
+intact runtime `release_manifest.json` advertising `supported_contract_versions`
+bound to the exact CLI hash. Only then select `--contract-version 2` on
+capabilities and the operation; default calls stay v1. For an unpackaged engineering build, one nonmutating v2
 capabilities probe may fall back to v1 only on a positively observed
 unsupported-option refusal; cache the outcome by EXE identity. Never probe a
 mutating command to discover support or repeat negotiation per target.

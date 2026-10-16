@@ -23,9 +23,10 @@ archives, or compile during ordinary setup/cleanup. Explicit engineering work
 uses the bound README's source route separately.
 
 Inspect provenance and dirty state before replacement; a separate portable
-directory avoids modifying a developer checkout. Published v2.0.0 owner EXEs
-report `2.0.0-dev.1`; `release_manifest.json` records distribution identity and
-provenance limits. A source documentation update never upgrades that archive.
+directory avoids modifying a developer checkout. Read the actual distribution,
+application/build identities, contract advertisement and provenance limits from
+`release_manifest.json`; distribution and application versions can differ.
+A source documentation update never upgrades an installed archive.
 
 Moving an intact unregistered bundle preserves its relative binding. An
 installed Skill instead has an absolute receipt: after a move, identify the

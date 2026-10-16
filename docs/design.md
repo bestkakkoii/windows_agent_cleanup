@@ -75,11 +75,19 @@ GUI diagnostic copies include counts, errors, masked event evidence and availabl
 
 ## Publication and evidence
 
-The published Latest Release `v2.0.0` is the owner-authorized first-distribution exception described in [publication policy](publication.md). Its supplied GUI/CLI EXE bytes are unchanged and still report `2.0.0-dev.1` and the original development label. The release source reference is `2b552ba92c9e81cb1ef4b8101619993677b5548a`; runtime C++ sources remain unchanged from `479c3aa44cc918ec09a4c50a8a799ad1c89d9d0d`. No independent source-to-owner-binary attestation is claimed. The published runtime ZIP and generated Source ZIP are distinct deliverables.
-
-Owner GUI quick/overwrite smoke results and a successful 2,890-file CLI Quick pilot are available. Native CI run `38795510597`, at source revision `f6c4bcbd59fc5c2821109d81983b998129e41834`, passed 11 safe suites, four isolated suites and both source/runtime test packaging on hosted Windows Server 2025 with MSVC `19.51.36260.0` and SDK `10.0.26100.0`. CI does not execute or attest the owner-supplied binaries, prove desktop GUI operation, or cover the full physical-storage matrix. Broader CLI Agent acceptance and full hardware coverage remain pending. Current evidence and gaps are maintained in [the test plan](windows_test_plan.md) and [project metadata](../spec/project.json); individual source/test paths are not pass claims.
-
-Normal RC/Release owner-evidence and review gates remain in force for later versions. The first-distribution exception neither marks untested configurations passed nor authorizes another publication. End-to-end measurements, rather than a universal maximum-speed claim, determine performance conclusions.
+The [Latest Release](https://github.com/bestkakkoii/windows_agent_cleanup/releases/latest)
+is the current public distribution; exact identities, source references,
+authorization amendments and receipts are recorded in
+[project metadata](../spec/project.json) and [publication policy](publication.md).
+The [Windows test plan](windows_test_plan.md) records hosted and owner-supplied
+validation scope, including per-case `not_run` gaps. CI does not attest differently
+hashed owner EXEs, desktop GUI operation or the complete storage/platform matrix.
+Do not copy a current release number or acceptance snapshot into architecture
+instructions. A source documentation update does not replace distributed bytes.
+Normal gates apply unless a specific owner amendment is recorded; authorization
+never turns an unexecuted test into a pass. The runtime ZIP and GitHub-generated
+source archive are distinct deliverables. End-to-end measurements determine
+performance conclusions; neither distribution type proves physical sanitization.
 
 ## Production Agent contracts in source
 
@@ -88,7 +96,8 @@ verifies its release-record checksum before extraction and binds an Agent-chosen
 portable directory. Generated source archives and compilation belong to explicit
 engineering work. The small absolute-path README routes operators to the sole
 Skill kernel; reuse known plan/scope/authority and load references conditionally.
-The published v2.0.0 bundle retains its original v1 interfaces and instructions.
+Each installed bundle retains its own interfaces and instructions; source
+changes do not upgrade older executables.
 
 New source supports explicit `--contract-version 2`; omission retains v1 output
 shape and exits. V2 capabilities observes the current effective token, numeric
@@ -117,14 +126,15 @@ unavailable, incomplete or ambiguous states. A validated terminal record preserv
 its original result; no lookup state authorizes replay or implies exactly-once
 execution. Report creation uses the store's explicit private owner/ACL policy.
 
-Future runtime packaging copies supplied approved EXE bytes and canonical Skill
-content, renders only distribution routing, and records actual hashes, PE/build
-identity and provenance. Source and runtime archive contracts remain separate;
-neither a successful package check nor CI grants publication permission.
-The scoped hosted Windows build/runtime evidence is recorded in
-[project metadata](../spec/project.json); desktop GUI, hardware and owner
-acceptance remain pending. These interfaces are not retroactively present in
-the published owner binaries.
+Runtime packaging copies approved EXE bytes and canonical Skill content, renders
+distribution routing, and records actual hashes, PE/build identity and provenance.
+A verified prior runtime can supply unchanged binaries and contract evidence;
+repackaging binds its trusted input hash rather than fabricating capabilities.
+Source and runtime archive contracts remain separate; package checks and CI do
+not grant publication permission. Scoped hosted and owner-supplied Actions CLI
+evidence is recorded in [project metadata](../spec/project.json); desktop GUI and
+broader hardware acceptance remain pending. New source interfaces do not
+retroactively appear in older distributed binaries.
 
 Exact-binary frozen-membership race evidence, full hardware coverage and
 attributable allocation-release measurements remain open. Scheduling changes

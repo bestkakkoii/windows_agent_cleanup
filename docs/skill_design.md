@@ -51,7 +51,7 @@ location to modifying a checkout. No runtime/SDK/compiler/registration is
 required to use the native binary through the manual README entry.
 
 The canonical source Skill and all references are copied byte-for-byte into
-future runtime bundles. Only distribution-specific README/location/build
+runtime bundles. Only distribution-specific README/location/build
 routing may be rendered; a generated runtime entry links engineering and
 optional registration to a pinned source revision, not nonexistent bundled
 scripts. The operation kernel is never independently rewritten by packaging.
@@ -60,7 +60,7 @@ ownership receipt. Versioned v2 instructions become conditional only after the
 exact bound EXE advertises them; unadvertised/legacy artifacts keep v1.
 
 The complete seven-file Skill keeps the same relative layout in source and in
-`windows_agent_cleanup_v2.0.0_windows_x64.zip`. From its location reference,
+the selected Windows x64 runtime ZIP. From its location reference,
 `../../..` resolves to the distribution root in either layout. The binary
 archive supplies `bin/secure_erase_cli.exe`, `bin/secure_erase_gui.exe`, the
 schemas shipped with that version, runtime README/AI entry files and
@@ -77,10 +77,12 @@ not the EXE's installation root. An intact unregistered bundle can move with
 its relative binding. A registered absolute binding needs deliberate safe
 reinstallation; the installer refuses a receipt belonging to a different root.
 
-The published distribution is `v2.0.0`; the unchanged owner-supplied programs
-report `2.0.0-dev.1`. Owner GUI smoke results do not establish CLI Agent or full
-hardware acceptance. Runtime entries point to the release manifest and source
-repository instead of assuming the complete engineering tree is installed.
+Distribution and application versions can differ. Read their exact identities,
+hashes, source references and evidence limits from the selected Release and
+runtime manifest; inspect command support rather than guessing from labels.
+GUI smoke results alone do not establish CLI Agent or hardware acceptance.
+Runtime entries point to that manifest and the source repository instead of
+assuming the complete engineering tree is installed.
 The repo's source bootstrap and the archive's runtime bootstrap are different
 entry files; updating source documentation does not alter published ZIP bytes.
 
@@ -110,8 +112,8 @@ it; ordinary binary adoption does not require a source checkout merely to regist
 choose user-scope discovery for reuse or an explicit project-local destination
 for project scope. These client folders do not constrain the tool directory.
 
-The source checkout contains `scripts/install_skill.ps1`; the v2.0.0 binary ZIP
-does not. An installer from a separate source checkout can register the Skill
+The source checkout contains `scripts/install_skill.ps1`; the runtime ZIP
+intentionally omits this engineering installer. An installer from a separate source checkout can register the Skill
 shipped in an actual binary root. Replace the placeholders with observed paths:
 
 ```powershell
@@ -144,7 +146,7 @@ are not mandatory runtime reads.
 - [Codex AGENTS discovery](https://learn.chatgpt.com/docs/agent-configuration/agents-md) and [customization guidance](https://learn.chatgpt.com/docs/customization/overview): short persistent repository rules, with procedures in Skills.
 - [Claude Code memory/imports](https://code.claude.com/docs/en/memory#share-one-file-with-other-coding-tools) and [instruction-writing guidance](https://code.claude.com/docs/en/best-practices#write-an-effective-claudemd): shared-file imports, current AGENTS conditions, concrete concise instructions and actual loading/permission semantics.
 
-- [OpenAI Skill Creator](https://github.com/openai/skills/blob/main/skills/.system/skill-creator/SKILL.md): concise procedural body, reusable resources, generated UI metadata, validation and independent forward testing.
+- [OpenAI Skill Creator](https://github.com/openai/skills/blob/49f948faa9258a0c61caceaf225e179651397431/skills/.system/skill-creator/SKILL.md): concise procedural body, reusable resources, generated UI metadata, validation and independent forward testing.
 - [OpenAI Codex skills](https://developers.openai.com/codex/skills): progressive loading and `.agents/skills` repository/user discovery.
 - [Claude Code skills](https://code.claude.com/docs/en/skills): `.claude/skills` locations, supporting files and the shared Agent Skills format.
 - [Agent Skills specification](https://agentskills.io/specification): portable frontmatter, relative references and progressive disclosure.

@@ -95,7 +95,10 @@ Primary measurement is total time from manifest/discovery through admission, del
 
 Use a copy of the evidence template for each tested revision/environment; its default `not_run` entries are not results. Bind logs, exact commands and effective token, clean/incremental build state, cache reuse, fixture recipe, expected/actual statuses, compiler/SDK/std provider, dependency lock, OS/device/filesystem identities and artifact SHA-256 to that run. Preserve `result.json`, `events.jsonl`, stage logs, extracted manifests and both available JUnit files. Keep suite counts and case-level omissions separate; repeat hardware rows per actual device/filesystem combination. Build logs may reveal local paths; sanitize public excerpts without losing error codes and neighboring context. Keep protected checkpoints private unless diagnosis specifically requires them.
 
-Release requires all applicable mandatory unit/integration/isolated destructive gates and the claimed native platform matrix to pass, with no unresolved blocking safety finding. Both RC and Release publication wait for the owner’s returned Windows build/test evidence and review for the exact revision. CI artifacts remain unpublished development test sources. After owner acceptance, incomplete platform/hardware coverage permits at most an explicitly scoped RC; full Release requires the claimed matrix to pass. Unsupported cases must be explicitly rejected or receive only their independently authorized lower capability. Attestations establish provenance, not runtime correctness, signing or physical NAND erasure.
+Normal release gates, unless a specific dated owner amendment is recorded in
+[publication policy](publication.md), require all applicable mandatory unit/integration/isolated destructive gates and the claimed native platform matrix to pass, with no unresolved blocking safety finding. Both RC and Release publication wait for the owner’s returned Windows build/test evidence and review for the exact revision. CI artifacts remain unpublished development test sources. After owner acceptance, incomplete platform/hardware coverage permits at most an explicitly scoped RC; full Release requires the claimed matrix to pass. Unsupported cases must be explicitly rejected or receive only their independently authorized lower capability. Attestations establish provenance, not runtime correctness, signing or physical NAND erasure.
+
+### Historical first public distribution
 
 For the first public distribution, [v2.0.0](https://github.com/bestkakkoii/windows_agent_cleanup/releases/tag/v2.0.0)
 was published as the formal Latest release on 2026-10-16 (Asia/Taipei), at source
@@ -108,6 +111,8 @@ The owner reported GUI quick deletion and verified overwrite smoke success, and
 the scoped CLI Quick pilot below. Broader CLI Agent acceptance and the full
 hardware matrix remain pending. The supplied
 binaries have no independently authenticated binding to a source commit.
+
+### Hosted native CI evidence
 
 [CI run 38795510597](https://github.com/bestkakkoii/windows_agent_cleanup/actions/runs/38795510597)
 passed at source revision `f6c4bcbd59fc5c2821109d81983b998129e41834`
