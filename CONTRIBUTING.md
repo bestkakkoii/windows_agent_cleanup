@@ -6,6 +6,15 @@ Read [AGENTS.md](AGENTS.md), the relevant approved requirements and the owning m
 
 Keep work focused on an observable behavior. GUI and CLI use the same core; implement safety and scheduling rules there. Describe concrete before/after behavior, material tradeoffs, and the evidence collected. Keep the existing C++ module and naming conventions. Do not introduce another runtime or parallel scheduler without a demonstrated need.
 
+Update `README.md` and `README_zh_tw.md` together: preserve equivalent features,
+setup order, authorization/validation limits and destinations, including new
+documentation links. Keep literal application/distribution versions, artifact
+hashes and acceptance history in release records, `spec/project.json` and the
+publication policy, not README snapshots. Use `/releases/latest` for ordinary
+downloads. The [Quick technical report](docs/quick_delete_technical_report.md)
+owns implementation/reproduction detail; update it when the traced algorithm
+changes rather than duplicating that detail in translated READMEs.
+
 Preserve source formats: owned code/build files and regular documentation use strict UTF-8 with BOM; JSON/JSONL/YAML use UTF-8 without BOM; BAT is ASCII CRLF. `SKILL.md` frontmatter starts at byte zero without a BOM. Keep pinned upstream bytes unchanged. Windows build preflight checks owned code/build encoding; `scripts/validate.py` also checks documentation and format exceptions.
 
 Use disjoint ownership when delegating work. Internal handoffs should be concise technical English, point to exact files and contracts, and state checks, failures, and missing evidence. Read-only exploration can run in parallel; coordinate overlapping edits and cleanup.

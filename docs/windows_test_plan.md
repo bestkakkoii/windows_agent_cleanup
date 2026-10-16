@@ -169,3 +169,55 @@ format, not the owner binary ZIP or GitHub's automatic source archives. The
 does not include built CMake/Ninja tools, so a first tool bootstrap can still need
 network access. Archive integrity checks bind the recorded bytes and evidence;
 they do not independently reproduce a native build or complete acceptance.
+
+## Owner-supplied fresh Actions adoption assessment
+
+An independent Agent assessment supplied on 2026-10-16 reports a scoped pass
+for the exact runtime from Actions artifact `12001289009` at source revision
+`f6c4bcbd59fc5c2821109d81983b998129e41834`. Engineering reviewed the supplied
+assessment; its referenced raw scripts/receipts/per-file records were not
+supplied for independent inspection or reexecution. The report hash and exact
+outer/runtime/EXE hashes are in `spec/project.json` under
+`evidence.owner_supplied_fresh_actions_assessment`.
+
+The assessed Windows 11 Pro build 26200 x64 host first observed correct
+unelevated readiness refusal, then refreshed readiness after an ordinary
+OS-consented elevated launch. Reported exercised scope: intact runtime adoption,
+19 manifest-listed member size/hash checks before/after use, isolated seven-file
+Skill registration and manual instruction loading, advertised v2 capabilities,
+advisory scan with selected names retained, outside-root refusal, Quick and
+read-only terminal-result lookup. Optional registration acquired the same-commit
+source installer as documented; ordinary runtime operation required no source
+build. Fresh-session Skill discovery/autoload was not tested.
+
+| Reported disposable Quick fixture | Outcome |
+|---|---|
+| Selected/completed files | 258 / 258 |
+| Selected/completed directories | 19 / 19 |
+| Known snapshot logical bytes | 2,098,700; unknown-size entries 0 |
+| Failed / pending / remaining selected names | 0 / 0 / 0 |
+| Native exit / status | 0 / completed |
+| Native process wall time | 3,010.249 ms |
+| Native preparation / freeze / first pass | 1,521.4594 / 192.5232 / 248.6383 ms |
+| Native recovery / pre-result reporting | 0.0072 / 42.8644 ms |
+| Native total to result | 2,908.5708 ms |
+
+The phase list is not assumed exhaustive/additive and has different boundaries
+from process wall time. Reported reconciliation preserved the authorization root
+and unselected sentinel contents, confirmed all selected names absent, matched
+final report/stdout and status/original-result objects, and retained runtime
+hashes. Scan checked namespace presence, not exhaustive file-content hashes.
+A caller's cp950/default-text-decoding failure was corrected in that caller;
+it was not a native product defect. Formal JSON Schema validation was not run.
+
+No material product change was demonstrated necessary by this assessment.
+GUI, default classification on real projects, legacy v1 behavior, upgrade/move,
+reparse/ADS/hardlink/sparse/long-path cases, active-lock recovery, interruption,
+huge manifests, overwrite/resume/process actions and the full storage/platform
+matrix remain outside this run. This is owner-supplied scoped evidence for the
+CI-built bytes, not for differently hashed owner uploads, independent build
+attestation, broad production acceptance, RC/Release approval, real cleanup
+permission, attributable capacity release or a performance ceiling.
+
+Implementation and repeatable performance methodology are documented in the
+[Quick deletion technical report](quick_delete_technical_report.md).

@@ -241,7 +241,10 @@ def build_package(root: Path, output: Path, cli: Path, gui: Path, provenance_pat
     files['README_AI.md'] = render_readme_ai((root / 'README_AI.md').read_bytes(), commit)
     runtime_readme = f'''# Windows Agent Cleanup — portable runtime
 
-Distribution: `{distribution}`. Actual application version: `{cli_identity['application_version']}`.
+[繁體中文](README_zh_tw.md)
+
+Distribution/application versions, executable build identity, source references,
+supported contracts and per-file hashes are recorded in `release_manifest.json`.
 
 ## Start with your agent
 
@@ -254,15 +257,42 @@ GUI: `bin/secure_erase_gui.exe`; machine CLI: `bin/secure_erase_cli.exe`.
 Verify this archive's SHA-256 from the authorized Release record before extraction.
 This binary runtime is distinct from GitHub-generated Source code archives.
 All member hashes and exact CLI contract binding are in `release_manifest.json`.
-Distribution documentation source: `{commit}`. Captured runtime build identity:
-`{cli_identity['build_identity']}`. Metadata/hash consistency is not independently
+Distribution documentation source: `{commit}`. Metadata/hash consistency is not independently
 attested source-to-binary correspondence or physical sanitization proof.
 
 [Engineering instructions]({repository_url}/blob/{commit}/CONTRIBUTING.md#build-from-source) ·
-[Optional registration]({repository_url}/blob/{commit}/docs/skill_design.md#optional-registration).
+[Optional registration]({repository_url}/blob/{commit}/docs/skill_design.md#optional-registration) ·
+[Quick deletion technical report]({repository_url}/blob/{commit}/docs/quick_delete_technical_report.md).
 Packaging alone grants no RC/Release publication or owner acceptance.
 '''
     files['README.md'] = runtime_readme.encode('utf-8-sig')
+    runtime_readme_zh_tw = f'''# Windows Agent Cleanup — 可攜執行套件
+
+[English](README.md)
+
+發行／程式版本、EXE 建置身分、來源參照、支援契約與各檔雜湊，
+統一記錄於 `release_manifest.json`。
+
+## 交給 Agent 使用
+
+適用 Windows 11+ x64。保留完整目錄，不需要編譯器、Python、Node.js、
+SDK、MCP 服務、全域 PATH 修改或 Skill 註冊。自行選擇合適目錄，
+將本目錄的 [README_AI.md](README_AI.md) 絕對路徑交給本機 Windows Agent。
+讀取與安裝不授權刪除。
+GUI：`bin/secure_erase_gui.exe`；機器專用 CLI：`bin/secure_erase_cli.exe`。
+
+解壓縮前，先比對已授權 Release 紀錄中的 SHA-256。
+本執行套件與 GitHub 自動產生的 Source code 壓縮檔不同。
+各檔雜湊與確切 CLI 契約綁定見 `release_manifest.json`。
+發行文件來源：`{commit}`。中繼資料與雜湊一致，不代表獨立的
+原始碼到二進位認證，也不代表實體抹除證據。
+
+[工程說明]({repository_url}/blob/{commit}/CONTRIBUTING.md#build-from-source) ·
+[可選註冊]({repository_url}/blob/{commit}/docs/skill_design.md#optional-registration) ·
+[快速刪除技術報告]({repository_url}/blob/{commit}/docs/quick_delete_technical_report.md)。
+封裝本身不代表 RC／Release 發布授權或擁有者驗收。
+'''
+    files['README_zh_tw.md'] = runtime_readme_zh_tw.encode('utf-8-sig')
     manifest = {'schema': 'windows_agent_cleanup.runtime_package.v1', 'distribution_kind': 'portable_runtime',
                 'distribution_version': distribution, 'application_version': cli_identity['application_version'],
                 'platform': {'minimum_windows_build': 22000, 'architecture': 'x64'},

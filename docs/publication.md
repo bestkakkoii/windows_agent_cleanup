@@ -39,6 +39,14 @@ can contain explicit `not_run` scenarios, including overwrite when the runner
 cannot identify storage media. See the [Windows acceptance plan](windows_test_plan.md).
 Do not infer physical NAND sanitization, instant space release or maximum speed.
 
+A later owner-supplied independent Agent assessment reports successful fresh
+adoption and v2 Quick/status fixture execution for the exact CI-built Actions
+runtime. Its scope, hash binding and untested cases are recorded in the
+[Windows test plan](windows_test_plan.md#owner-supplied-fresh-actions-adoption-assessment).
+It establishes neither new publication authority nor acceptance of differently
+hashed owner-supplied EXEs. No material product defect was demonstrated by that
+assessment; do not invent a redesign or extend its coverage to GUI/hardware.
+
 This publication exception applies only to the recorded first distribution.
 Later RC/Release publication requires a new owner authorization and the normal
 gates below. Do not replace an existing published asset silently. Documentation
@@ -119,7 +127,11 @@ The packager checks both x64 PE VERSIONINFO resources, consistent actual
 application/numeric versions and build identity, OriginalFilename, exact input
 hashes, and captured v2 capabilities. It copies executable bytes unchanged,
 the canonical complete Skill/references, operational schemas, licenses and
-NOTICE. Only distribution README/engineering URLs are rendered; the Skill and
+NOTICE. Runtime English/Traditional Chinese READMEs provide equivalent setup
+and provenance guidance without literal application/distribution versions; the
+manifest owns those identities. Their technical-report/engineering links are
+pinned to the documentation source commit. Only distribution README/engineering
+URLs are rendered; the Skill and
 its references retain canonical bytes. README engineering and optional
 registration URLs are pinned to the exact distribution source commit.
 

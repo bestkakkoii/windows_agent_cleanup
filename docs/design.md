@@ -36,6 +36,11 @@ NTFS, ReFS, FAT32 and exFAT are in scope. Overwrite admission additionally requi
 
 ## Quick staging and scheduling
 
+The [Quick deletion technical report](quick_delete_technical_report.md) traces
+the actual Windows calls, scheduling constants, resource formulas, failure
+semantics and reproducible experiments. This design document owns boundaries;
+the report owns detailed implementation analysis, not a separate execution policy.
+
 Quick input is pulled incrementally. Bounded workers enumerate independent directories while retaining charged ancestry leases and per-worker buffers. A thread-safe staging sink writes bounded sorted runs, merges them, detects duplicate-name identity conflicts, and seals an indexed complete batch. Nothing is deleted during this work. Resource pressure cannot silently truncate input or turn input chunks into independently authorized deletions.
 
 `secure_erase.quick_store` keeps full target strings and outcome records in protected scratch files. Record hashes and the whole-plan fingerprint bind reads to frozen membership. Compact parent/device/allocation metadata forms the resource-admitted dependency graph; each active worker loads a bounded target window. This reduces resident storage without claiming constant memory for an unlimited batch. There is no fixed 100,000-target or 16-worker Quick ceiling: live memory/commit, CPU, handle and scratch-disk observations, plus any caller limit, determine admission. Metadata still grows with target count and can reject an oversized complete job.

@@ -14,7 +14,7 @@
 
 Windows Agent Cleanup removes large project cleanup batches through a native C++ core shared by a machine-oriented CLI and a compact desktop GUI. Quick deletion removes selected names without reading or overwriting file contents. The separate overwrite workflow provides explicit, evidence-based sanitization results.
 
-**[Download v2.0.0 for Windows x64](https://github.com/bestkakkoii/windows_agent_cleanup/releases/tag/v2.0.0).** This published Latest Release contains the owner-supplied GUI/CLI binaries, runtime instructions, the complete Skill, schemas and licenses; application source and build/test files remain in Git. Verify the accompanying SHA-256 file before use. **The unchanged EXEs still report application version `2.0.0-dev.1`; the GUI retains its original development-build footer.** The owner reports a successful CLI Quick pilot of 2,890 files; broader CLI acceptance and the full hardware matrix remain pending, as scoped in the [publication policy](docs/publication.md). This project does not claim a hardware-independent maximum speed or physical NAND sanitization.
+**[Download the Latest Release for Windows x64](https://github.com/bestkakkoii/windows_agent_cleanup/releases/latest).** Its runtime ZIP contains GUI/CLI executables, runtime instructions, the complete Skill, schemas and licenses; application source and build/test files remain in Git. Obtain the distribution version, actual application version, hashes and validation scope from that Release and its manifest. Distribution and application versions can differ. Current evidence and remaining acceptance gaps are maintained in the [publication policy](docs/publication.md), rather than copied into this README. This project does not claim a hardware-independent maximum speed or physical NAND sanitization.
 
 ## Start with your agent
 
@@ -47,7 +47,10 @@ approval.
 - Freezes the selected batch before mutation; newly added or replacement targets are excluded.
 - Preserves system protection and reparse boundaries. Distinct selected hardlink names remain distinct targets.
 - Performs quick logical deletion without a content overwrite, readback pass, recycle bin, or per-file TRIM request.
+- Admits large batches using live resource budgets and indexed private scratch, then adjusts concurrency from measured completion rates and latency. No fixed target-count ceiling is imposed; insufficient resources can refuse a complete batch.
 - Keeps failure details in external reports while returning compact machine-readable summaries.
+
+The source supports an explicit v2 CLI contract for typed host readiness, shared operation statistics and read-only request status. Default calls retain v1. Select a contract using the exact runtime bundle's advertised capabilities; newer source documentation does not add features to an older executable.
 
 Capacity observations are measurements, not a guarantee that the job immediately released a specific number of bytes. Other open handles, remaining hardlinks, shared allocation, and snapshots can retain data or space.
 
@@ -71,10 +74,11 @@ Production targets Windows 11 or later on x64, MSVC, native C++ named modules an
 | [README_AI.md](README_AI.md) | Universal bootstrap and task routing |
 | [Project cleanup Skill](skills/project-cleanup/SKILL.md) | Cleanup workflow, plans and on-demand references |
 | [Design](docs/design.md) | Core boundaries and operational invariants |
+| [Quick deletion technical report](docs/quick_delete_technical_report.md) | Actual Windows APIs, algorithms, resource formulas and reproduction protocol |
 | [Approved requirements](spec/requirements.json) | Base requirements and explicit amendments |
 | [Windows test plan](docs/windows_test_plan.md) | Platform and storage evidence |
 
-Release records bind each artifact to its source reference, binary provenance and actual validation scope. The owner-supplied v2.0.0 binaries have no independently attested source-to-binary correspondence; a documentation update on `main` does not replace the published asset. [Publication policy](docs/publication.md) separates development artifacts, approved prereleases and full Releases. Generated binaries and per-run logs do not belong in the source tree.
+Release records bind each artifact to its source reference, binary provenance and actual validation scope. Hashes and embedded identity alone are not independently attested source-to-binary correspondence; a documentation update on `main` does not replace the published asset. [Publication policy](docs/publication.md) separates development artifacts, approved prereleases and full Releases. Generated binaries and per-run logs do not belong in the source tree.
 
 ## Help and contributions
 

@@ -120,6 +120,66 @@
         "Onboarding measurement applies to tagged release instructions, not current main"
       ],
       "details": "docs/windows_test_plan.md#owner-reported-cli-quick-pilot"
+    },
+    "owner_supplied_fresh_actions_assessment": {
+      "status": "scoped_pass_no_material_defect_observed",
+      "assessed_date": "2026-10-16",
+      "provenance": "Owner-supplied independent Agent assessment reviewed; raw caller scripts, receipts and per-file evidence referenced by that report were not supplied for independent reexecution or inspection",
+      "assessment_sha256": "e42b18e4fc32429c2199cb6672a3e293af385fa52a071475cff7dd57a89a4e3e",
+      "source_commit": "f6c4bcbd59fc5c2821109d81983b998129e41834",
+      "artifact_id": 12001289009,
+      "outer_zip_sha256": "6ec6b6a6b43558533b7f382b8159f6e9aedf284f3acdf09473065305f70f9406",
+      "runtime_zip_sha256": "94aef6b0e3e52f724af089c7dff097034d848723f1433c11571074f237b03d89",
+      "cli_sha256": "d5a6df885526f82d08a8b117b60086b924436542dc2a6099c6927651deea9311",
+      "gui_sha256_not_exercised": "17338b4d82c079d555fe212c19b6ae8c549e8de3ebf1a85832cb4a01377f216d",
+      "host": {
+        "os": "Windows 11 Pro",
+        "build": 26200,
+        "native_architecture": "x64",
+        "process_architecture": "x64",
+        "execution": "OS-consented elevated host; unelevated readiness refusal exercised first"
+      },
+      "verified_scope": [
+        "intact portable runtime and 19 manifest-listed member hashes",
+        "isolated seven-file Skill registration with explicit destination and manual instruction loading",
+        "v2 capabilities and actual-host readiness refresh",
+        "advisory scan preserves selected names",
+        "outside-root refusal preserves selected names",
+        "Quick removal and preservation of root/unselected sentinels",
+        "exact terminal status/original-result and final report/stdout equality",
+        "runtime files unchanged after execution"
+      ],
+      "quick_fixture": {
+        "selected_files": 258,
+        "selected_directories": 19,
+        "selected_entries": 277,
+        "selected_known_snapshot_logical_bytes": 2098700,
+        "unknown_size_entries": 0,
+        "completed_entries": 277,
+        "failed": 0,
+        "pending": 0,
+        "remaining_selected_names": 0,
+        "exit_code": 0,
+        "process_wall_ms": 3010.249,
+        "native_phases_ms": {
+          "manifest_preparation": 1521.4594,
+          "freeze": 192.5232,
+          "first_pass": 248.6383,
+          "recovery": 0.0072,
+          "reporting_before_result": 42.8644,
+          "total_to_result": 2908.5708
+        },
+        "phase_boundary_note": "Phase list is not assumed exhaustive/additive; process wall includes additional startup/output/teardown boundaries"
+      },
+      "limits": [
+        "No RC/Release approval or real cleanup authority",
+        "No independent source-to-binary attestation; binary consistency and self-reported identity only",
+        "Does not cover separately uploaded owner EXEs with different hashes",
+        "GUI, overwrite/resume, locked recovery, interruption, huge manifests and full hardware/filesystem matrix not exercised",
+        "Fresh-session Skill autoload not exercised; registration and manual instruction loading only",
+        "No formal JSON Schema validation, throughput ceiling, reclaim attribution or physical erasure evidence"
+      ],
+      "details": "docs/windows_test_plan.md#owner-supplied-fresh-actions-adoption-assessment"
     }
   },
   "git_policy": {
