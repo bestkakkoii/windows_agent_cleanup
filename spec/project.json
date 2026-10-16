@@ -195,7 +195,7 @@
     ]
   },
   "publication": {
-    "status": "first_public_binary_release_published",
+    "status": "actions_binary_release_published",
     "automatic_publication": false,
     "ci_distribution": "unpublished development test artifacts only",
     "owner_returned_windows_build_and_test_evidence_required_for": [
@@ -219,7 +219,7 @@
       "hardware_matrix": "not_completed",
       "source_to_binary_commit_binding": "not_independently_attested",
       "policy": "docs/publication.md",
-      "status": "published_latest",
+      "status": "published_previous",
       "tag": "v2.0.0",
       "release_id": 414107588,
       "url": "https://github.com/bestkakkoii/windows_agent_cleanup/releases/tag/v2.0.0",
@@ -236,7 +236,7 @@
     "owner_authorized_actions_distribution": {
       "version": "2.1.0",
       "tag": "v2.1.0",
-      "status": "authorized_preparing_not_yet_published",
+      "status": "published_latest",
       "owner_authorized_local_date": "2026-10-16",
       "authority": "Explicit owner instruction to upload/publish a new Release from Actions after Task 583 review",
       "presentation": "full Latest Release under this scoped owner amendment; remaining test gaps explicitly disclosed",
@@ -253,8 +253,25 @@
       "binary_mutation": "none; reuse exact assessed Actions bytes",
       "operator_material": "canonical bilingual runtime instructions, complete Skill, schemas, licenses; pinned technical/engineering links",
       "test_scope": "Task 583 CLI fixture/adoption plus scoped hosted CI; GUI and full hardware/overwrite/lock/scale acceptance incomplete",
-      "publication_receipt": "pending GitHub confirmation"
-    }
+      "publication_receipt": "GitHub Release and asset metadata confirmed; repository homepage Releases sidebar visibly shows this distribution as Latest",
+      "release_id": 414477911,
+      "url": "https://github.com/bestkakkoii/windows_agent_cleanup/releases/tag/v2.1.0",
+      "published_at_utc": "2026-10-16T02:40:06Z",
+      "source_reference_commit": "8346bd0e990a194c9bfc2c11c8697ee6540de9b6",
+      "archive": {
+        "asset_id": 645900976,
+        "name": "windows_agent_cleanup_v2.1.0_windows_x64.zip",
+        "bytes": 3451719,
+        "sha256": "15c38d7a2b1d27bef49ae83aa35709c3749e817a2a8134c1e3a45d91f8d54406"
+      },
+      "checksum_asset": {
+        "asset_id": 645901083,
+        "name": "windows_agent_cleanup_v2.1.0_windows_x64.zip.sha256",
+        "bytes": 111,
+        "sha256": "cf546d8b84062ee24e4f48c3242c251b859780887bcf853683c6a5bd315fb9b5"
+      }
+    },
+    "current_distribution": "owner_authorized_actions_distribution"
   },
   "encoding": {
     "owned_source_files": "UTF-8+BOM; enforced before Windows build and by source validation",
@@ -268,14 +285,14 @@
   },
   "production_agent_source_changes": {
     "authority": "Owner-supplied production Agent change specification and Release-first adoption amendment, 2026-10-16 Asia/Taipei",
-    "status": "implemented_hosted_windows_checks_passed_owner_acceptance_pending",
+    "status": "scoped_actions_cli_adoption_passed_remaining_acceptance_pending",
     "operation_kernel": "skills/project-cleanup/SKILL.md; <=50 body lines; conditional references; reuse known scope/plan/authority",
     "readiness": "Opt-in v2 shared nonmutating effective-token/Windows/architecture observation; unknown values retain diagnostics",
     "quick_statistics": "Shared checked unique namespace counts and default-stream snapshot lengths, explicit unknown counts, final failure categories and monotonic phases",
     "request_status": "Opt-in v2 strictly read-only bounded existing private report lookup; no creation, execution, replay or Quick resume",
     "runtime_packaging": "scripts/package_runtime.py; engineering-only approved unchanged binaries, canonical operator bundle and truthful hash-bound build/provenance metadata",
     "v1_contract": "Default output shape and exits retained; original result and manifest schemas unchanged",
-    "published_asset": "Existing v2.0.0 bytes and provenance unchanged; new source interfaces require a separately authorized future distribution",
+    "published_asset": "Owner-authorized Actions distribution publishes assessed v1/v2 CLI bytes; historical assets remain unchanged; see publication receipt and scoped acceptance limitations",
     "design": "docs/design.md#production-agent-contracts-in-source"
   }
 }

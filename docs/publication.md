@@ -62,7 +62,10 @@ On 2026-10-16 (Asia/Taipei), after reviewing Task 583, the owner explicitly
 instructed publication of a new Release from the assessed Actions runtime.
 The selected distribution is `v2.1.0`, a full Latest Release under this scoped
 owner decision; it is not a claim that every normal hardware/GUI gate passed.
-Publication is authorized but has not yet been completed at this source revision.
+GitHub confirmed publication at 2026-10-16T02:40:06Z. The repository homepage
+Releases sidebar visibly shows this distribution as Latest. The exact Release,
+asset identities, checksums and tagged source revision are recorded in
+[project metadata](../spec/project.json); the previous distribution remains intact.
 
 Preserve the exact CI-built CLI/GUI bytes from artifact `12001289009`, source
 `f6c4bcbd59fc5c2821109d81983b998129e41834`. Refresh the canonical runtime
@@ -77,8 +80,8 @@ establish independent source-to-binary attestation or physical sanitization.
 
 This owner amendment applies to this distribution only. Keep the previous
 Release/assets intact. Publish a newly named binary-only ZIP, matching checksum
-and explicit evidence/limitations; the final publication receipt is recorded
-only after GitHub confirms the Release and asset identities. The packager's
+and explicit evidence/limitations. The final publication receipt above was recorded
+after GitHub confirmed the Release and asset identities. The packager's
 `publication_allowed=false` means packaging itself grants no authority; this
 separate owner instruction supplies publication authority.
 
