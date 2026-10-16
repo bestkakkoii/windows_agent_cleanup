@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 from pathlib import Path, PurePosixPath
 import re
@@ -159,7 +160,9 @@ def render_readme_ai(data: bytes, commit: str) -> bytes:
     return ('\ufeff' + text).encode('utf-8')
 
 
-def build_package(root: Path, output: Path, cli: Path, gui: Path, provenance_path: Path) -> dict:
+def build_package(root: Path, output: Path, cli: Path | None = None, gui: Path | None = None,
+                  provenance_path: Path | None = None, *, verified_runtime: Path | None = None,
+                  expected_sha256: str | None = None, distribution_version: str | None = None) -> dict:
     """Package exact explicitly approved bytes against a clean canonical commit.
 
     Provenance is caller-supplied evidence. Capability capture is hash-bound but
@@ -176,14 +179,31 @@ def build_package(root: Path, output: Path, cli: Path, gui: Path, provenance_pat
     if git('status', '--porcelain', '--untracked-files=normal'):
         raise ValueError('runtime_package_requires_clean_committed_sources')
     commit = sha(git('rev-parse', 'HEAD'), 'distribution_source_commit', 40)
-    provenance = json.loads(provenance_path.read_text(encoding='utf-8'))
-    if not isinstance(provenance, dict) or provenance.get('schema') != 'windows_agent_cleanup.runtime_inputs.v1':
-        raise ValueError('runtime_input_contract_invalid')
-    distribution = checked_text(provenance.get('distribution_version'), 'distribution_version', 96)
+    previous = None
+    if verified_runtime is not None:
+        if any(value is not None for value in (cli, gui, provenance_path)) or not expected_sha256:
+            raise ValueError('runtime_repackage_requires_exclusive_hash_bound_archive')
+        # Retain and inspect one snapshot. No fabricated capabilities capture and
+        # no re-execution: contract evidence is inherited from the trusted archive.
+        archive_data = verified_runtime.read_bytes()
+        verify_runtime(verified_runtime, expected_sha256, archive_data=archive_data)
+        with zipfile.ZipFile(io.BytesIO(archive_data)) as archive:
+            previous = json.loads(archive.read(prefix + 'release_manifest.json'))
+            binaries = {name: archive.read(prefix + name) for name in
+                        ['bin/secure_erase_cli.exe', 'bin/secure_erase_gui.exe']}
+        approved = {name: digest(data) for name, data in binaries.items()}
+        distribution = checked_text(distribution_version, 'distribution_version', 96)
+    else:
+        if cli is None or gui is None or provenance_path is None or expected_sha256 or distribution_version:
+            raise ValueError('runtime_binary_inputs_required')
+        provenance = json.loads(provenance_path.read_text(encoding='utf-8'))
+        if not isinstance(provenance, dict) or provenance.get('schema') != 'windows_agent_cleanup.runtime_inputs.v1':
+            raise ValueError('runtime_input_contract_invalid')
+        distribution = checked_text(provenance.get('distribution_version'), 'distribution_version', 96)
+        binaries = {'bin/secure_erase_cli.exe': cli.read_bytes(), 'bin/secure_erase_gui.exe': gui.read_bytes()}
+        approved = provenance.get('approved_binary_sha256', {})
     if not re.fullmatch(r'v?[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?', distribution):
         raise ValueError('distribution_version_invalid')
-    binaries = {'bin/secure_erase_cli.exe': cli.read_bytes(), 'bin/secure_erase_gui.exe': gui.read_bytes()}
-    approved = provenance.get('approved_binary_sha256', {})
     if not isinstance(approved, dict):
         raise ValueError('approved_binary_hash_object_required')
     identities = {}
@@ -199,14 +219,17 @@ def build_package(root: Path, output: Path, cli: Path, gui: Path, provenance_pat
            {key: value for key, value in cli_identity.items() if key != 'original_filename'}
            for identity in identities.values()):
         raise ValueError('runtime_binary_pair_identity_mismatch')
-    capture = provenance.get('capabilities_capture', {})
-    if not isinstance(capture, dict) or capture.get('cli_sha256') != digest(binaries['bin/secure_erase_cli.exe']):
-        raise ValueError('capabilities_binary_binding_mismatch')
-    capabilities = capture.get('result', {})
-    if (not isinstance(capabilities, dict) or capabilities.get('schema') != 'windows_agent_cleanup.capabilities.v2'
-            or capabilities.get('supported_contract_versions') != [1, 2]):
-        raise ValueError('future_runtime_v2_capabilities_required')
-    runtime = capabilities.get('build', capabilities.get('identity', {}))
+    if previous is None:
+        capture = provenance.get('capabilities_capture', {})
+        if not isinstance(capture, dict) or capture.get('cli_sha256') != digest(binaries['bin/secure_erase_cli.exe']):
+            raise ValueError('capabilities_binary_binding_mismatch')
+        capabilities = capture.get('result', {})
+        if (not isinstance(capabilities, dict) or capabilities.get('schema') != 'windows_agent_cleanup.capabilities.v2'
+                or capabilities.get('supported_contract_versions') != [1, 2]):
+            raise ValueError('future_runtime_v2_capabilities_required')
+        runtime = capabilities.get('build', capabilities.get('identity', {}))
+    else:
+        runtime = previous.get('runtime_build', {})
     if not isinstance(runtime, dict) or runtime.get('version') != cli_identity['application_version'] or runtime.get('build_identity') != cli_identity['build_identity']:
         raise ValueError('capabilities_pe_identity_mismatch')
     known = runtime.get('source_commit_known')
@@ -304,6 +327,13 @@ GUI：`bin/secure_erase_gui.exe`；機器專用 CLI：`bin/secure_erase_cli.exe`
                                      'basis': 'explicit_hash_bound_capabilities_capture_and_matching_pe_metadata'},
                 'pe_identity': identities, 'manifest_self_hash_excluded': True,
                 'files': [{'path': name, 'bytes': len(data), 'sha256': digest(data)} for name, data in sorted(files.items())]}
+    if previous is not None:
+        manifest['contract_binding']['basis'] = 'verified_prior_runtime_archive_with_unchanged_executables'
+        manifest['repackaged_from'] = {
+            'archive_sha256': digest(archive_data),
+            'distribution_source_commit': previous['distribution_source_commit'],
+            'distribution_version': previous['distribution_version'],
+            'contract_binding': previous['contract_binding']}
     files['release_manifest.json'] = canonical_json(manifest)
     output.parent.mkdir(parents=True, exist_ok=True)
     # ZIP_STORED avoids compressor-version drift; fixed metadata makes same inputs
@@ -320,12 +350,13 @@ GUI：`bin/secure_erase_gui.exe`；機器專用 CLI：`bin/secure_erase_cli.exe`
     return result
 
 
-def verify_runtime(path: Path, expected_sha256: str | None = None) -> dict:
+def verify_runtime(path: Path, expected_sha256: str | None = None, *, archive_data: bytes | None = None) -> dict:
     """Read-only integrity check; never extract, load or execute archive members."""
-    checksum = digest(path.read_bytes())
+    data = path.read_bytes() if archive_data is None else archive_data
+    checksum = digest(data)
     if expected_sha256 and checksum != sha(expected_sha256, 'expected_sha256'):
         raise ValueError('runtime_archive_sha256_mismatch')
-    with zipfile.ZipFile(path) as archive:
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
         names = archive.namelist()
         if len(names) > 256 or len(set(names)) != len(names) or len({name.casefold() for name in names}) != len(names):
             raise ValueError('runtime_archive_membership_ambiguous')
@@ -381,13 +412,21 @@ def main() -> int:
     parser.add_argument('--provenance', type=Path)
     parser.add_argument('--verify', type=Path)
     parser.add_argument('--expected-sha256')
+    parser.add_argument('--repackage', type=Path)
+    parser.add_argument('--distribution-version')
     args = parser.parse_args()
     if args.verify:
-        if any([args.output, args.cli, args.gui, args.provenance]):
+        if any([args.output, args.cli, args.gui, args.provenance, args.repackage, args.distribution_version]):
             parser.error('verify_and_package_options_are_exclusive')
         result = verify_runtime(args.verify, args.expected_sha256)
+    elif args.repackage:
+        if not all([args.output, args.expected_sha256, args.distribution_version]) or any([args.cli, args.gui, args.provenance]):
+            parser.error('repackage_requires_output_expected_sha256_distribution_version_only')
+        result = build_package(Path(__file__).resolve().parents[1], args.output,
+                               verified_runtime=args.repackage, expected_sha256=args.expected_sha256,
+                               distribution_version=args.distribution_version)
     else:
-        if not all([args.output, args.cli, args.gui, args.provenance]) or args.expected_sha256:
+        if not all([args.output, args.cli, args.gui, args.provenance]) or args.expected_sha256 or args.distribution_version:
             parser.error('output_cli_gui_provenance_are_required')
         result = build_package(Path(__file__).resolve().parents[1], args.output, args.cli, args.gui, args.provenance)
     print(json.dumps(result, ensure_ascii=False))

@@ -48,10 +48,37 @@ hashed owner-supplied EXEs. No material product defect was demonstrated by that
 assessment; do not invent a redesign or extend its coverage to GUI/hardware.
 
 This publication exception applies only to the recorded first distribution.
-Later RC/Release publication requires a new owner authorization and the normal
-gates below. Do not replace an existing published asset silently. Documentation
+Later RC/Release publication requires new owner authorization and the normal
+gates below, except a specifically recorded owner amendment such as the
+Actions distribution below. Do not replace an existing published asset silently. Documentation
 on `main` may be newer than the tagged bundle; a documentation commit does not
 update files already distributed in that published artifact.
+
+## Owner-authorized Actions distribution
+
+On 2026-10-16 (Asia/Taipei), after reviewing Task 583, the owner explicitly
+instructed publication of a new Release from the assessed Actions runtime.
+The selected distribution is `v2.1.0`, a full Latest Release under this scoped
+owner decision; it is not a claim that every normal hardware/GUI gate passed.
+Publication is authorized but has not yet been completed at this source revision.
+
+Preserve the exact CI-built CLI/GUI bytes from artifact `12001289009`, source
+`f6c4bcbd59fc5c2821109d81983b998129e41834`. Refresh the canonical runtime
+instructions, complete Skill, schemas and licenses from the distribution source
+commit. Record both revisions and the exact verified prior runtime archive hash.
+The application still reports `2.0.0-dev.1`; do not patch/rebuild the EXEs to
+make their label match the distribution. Task 583 exercised CLI adoption,
+readiness, 277-entry Quick deletion, scope refusal and terminal status; it did
+not exercise these GUI bytes, overwrite, locked recovery, huge manifests or the
+full hardware matrix. Neither its consistency checks nor this publication
+establish independent source-to-binary attestation or physical sanitization.
+
+This owner amendment applies to this distribution only. Keep the previous
+Release/assets intact. Publish a newly named binary-only ZIP, matching checksum
+and explicit evidence/limitations; the final publication receipt is recorded
+only after GitHub confirms the Release and asset identities. The packager's
+`publication_allowed=false` means packaging itself grants no authority; this
+separate owner instruction supplies publication authority.
 
 ## Normal gates for later versions
 
@@ -162,3 +189,23 @@ configuration: reconfigure after source changes before attributing a build to
 that source state. The PE numeric assembly/file version `2.0.0.1` identifies the
 current application development build; the string remains `2.0.0-dev.1`.
 CLI `asInvoker` and GUI administrator behavior remain separate and unchanged.
+
+## Refreshing an approved Actions runtime
+
+For an already packaged, explicitly approved runtime, repackage from its
+independently obtained exact archive SHA-256 rather than inventing or
+reconstructing a capabilities response. The tool validates the retained byte
+snapshot, all inner hashes and PE identities, preserves both EXEs and the
+previous contract/build evidence, then refreshes canonical operator files from
+a clean committed source tree. It records `repackaged_from` with the input
+archive hash and prior contract binding. This does not execute the EXEs or
+establish a new runtime test result.
+
+```text
+python scripts/package_runtime.py --repackage <approved runtime.zip> --expected-sha256 <trusted input SHA-256> --distribution-version <new version> --output <new external runtime.zip>
+```
+
+The output still needs its own checksum/integrity verification and separately
+recorded publication authority. An archive whose supplied outer hash matches
+but whose member hashes fail is refused. Input/output paths and existing output
+assets cannot be silently substituted or overwritten.

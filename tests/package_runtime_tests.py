@@ -204,6 +204,59 @@ class runtime_package_tests(unittest.TestCase):
             verify(broken)
         self.assertFalse((self.base / 'windows_agent_cleanup').exists())
 
+    def test_repackage_preserves_binaries_and_contract_evidence_with_new_docs(self):
+        original = self.produce()
+        with zipfile.ZipFile(self.output) as archive:
+            before = json.loads(archive.read('windows_agent_cleanup/release_manifest.json'))
+        with (self.root / 'README_AI.md').open('ab') as stream:
+            stream.write(b'\nUpdated canonical routing documentation.\n')
+        self.git('add', 'README_AI.md')
+        self.git('-c', 'user.name=runtime_fixture', '-c', 'user.email=fixture@example.invalid',
+                 'commit', '-qm', 'canonical routing update')
+        self.provenance.unlink()  # No invented/new capture is available or required.
+        output = self.base / 'refreshed.zip'
+        package(self.root, output, verified_runtime=self.output,
+                expected_sha256=original['sha256'], distribution_version='0.0.1-fixture')
+        with zipfile.ZipFile(output) as archive:
+            after = json.loads(archive.read('windows_agent_cleanup/release_manifest.json'))
+            self.assertEqual(archive.read('windows_agent_cleanup/bin/secure_erase_cli.exe'), self.cli.read_bytes())
+            self.assertEqual(archive.read('windows_agent_cleanup/bin/secure_erase_gui.exe'), self.gui.read_bytes())
+            self.assertEqual(archive.read('windows_agent_cleanup/README_AI.md'),
+                             module['render_readme_ai']((self.root / 'README_AI.md').read_bytes(), self.git('rev-parse', 'HEAD')))
+            self.assertEqual(after['runtime_build'], before['runtime_build'])
+            self.assertEqual(after['repackaged_from']['archive_sha256'], original['sha256'])
+            self.assertEqual(after['repackaged_from']['contract_binding'], before['contract_binding'])
+            self.assertNotEqual(after['distribution_source_commit'], before['distribution_source_commit'])
+            self.assertEqual(after['distribution_version'], '0.0.1-fixture')
+            self.assertFalse(after['publication_allowed'])
+        second = self.base / 'refreshed_again.zip'
+        package(self.root, second, verified_runtime=self.output,
+                expected_sha256=original['sha256'], distribution_version='0.0.1-fixture')
+        self.assertEqual(output.read_bytes(), second.read_bytes())
+
+    def test_repackage_requires_independently_supplied_matching_hash(self):
+        self.produce()
+        for checksum in (None, '0' * 64):
+            with self.assertRaisesRegex(ValueError, 'hash_bound_archive|sha256_mismatch'):
+                package(self.root, self.base / 'refused.zip', verified_runtime=self.output,
+                        expected_sha256=checksum, distribution_version='0.0.1-fixture')
+            self.assertFalse((self.base / 'refused.zip').exists())
+
+    def test_repackage_checks_inner_integrity_even_when_outer_hash_matches(self):
+        self.produce()
+        broken = self.base / 'altered_input.zip'
+        with zipfile.ZipFile(self.output) as original, zipfile.ZipFile(broken, 'w') as archive:
+            for info in original.infolist():
+                data = original.read(info.filename)
+                if info.filename.endswith('/README.md'):
+                    data += b'changed'
+                archive.writestr(info, data)
+        with self.assertRaisesRegex(ValueError, 'member_bytes_mismatch'):
+            package(self.root, self.base / 'refused.zip', verified_runtime=broken,
+                    expected_sha256=hashlib.sha256(broken.read_bytes()).hexdigest(),
+                    distribution_version='0.0.1-fixture')
+        self.assertFalse((self.base / 'refused.zip').exists())
+
     def test_pe_reader_rejects_invalid_ranges_architecture_and_missing_resource(self):
         for data in [b'', b'MZ' + b'\0' * 62, self.cli.read_bytes()[:600]]:
             with self.assertRaises(ValueError):

@@ -209,7 +209,7 @@
       "os_build",
       "test_results"
     ],
-    "full_release_latest": "Normal gates apply to later versions; published v2.0.0 uses the explicit first_public_distribution owner exception",
+    "full_release_latest": "Normal gates apply unless a specific owner distribution amendment is recorded; first public and Actions distribution decisions are separately scoped",
     "first_public_distribution": {
       "version": "2.0.0",
       "owner_authorized_local_date": "2026-10-16",
@@ -232,6 +232,28 @@
         "sha256": "e200b77c0cfb0aa966964c8653d1d4ad69c43ea7c9cd6062dee24690b8831372"
       },
       "contents": "GUI/CLI binaries, runtime instructions, complete Skill, operational schemas and licenses; application sources/build scripts/tests excluded"
+    },
+    "owner_authorized_actions_distribution": {
+      "version": "2.1.0",
+      "tag": "v2.1.0",
+      "status": "authorized_preparing_not_yet_published",
+      "owner_authorized_local_date": "2026-10-16",
+      "authority": "Explicit owner instruction to upload/publish a new Release from Actions after Task 583 review",
+      "presentation": "full Latest Release under this scoped owner amendment; remaining test gaps explicitly disclosed",
+      "artifact_id": 12001289009,
+      "runtime_source_commit": "f6c4bcbd59fc5c2821109d81983b998129e41834",
+      "input_runtime_sha256": "94aef6b0e3e52f724af089c7dff097034d848723f1433c11571074f237b03d89",
+      "cli_sha256": "d5a6df885526f82d08a8b117b60086b924436542dc2a6099c6927651deea9311",
+      "gui_sha256": "17338b4d82c079d555fe212c19b6ae8c549e8de3ebf1a85832cb4a01377f216d",
+      "application_reported_version": "2.0.0-dev.1",
+      "contract_versions": [
+        1,
+        2
+      ],
+      "binary_mutation": "none; reuse exact assessed Actions bytes",
+      "operator_material": "canonical bilingual runtime instructions, complete Skill, schemas, licenses; pinned technical/engineering links",
+      "test_scope": "Task 583 CLI fixture/adoption plus scoped hosted CI; GUI and full hardware/overwrite/lock/scale acceptance incomplete",
+      "publication_receipt": "pending GitHub confirmation"
     }
   },
   "encoding": {
